@@ -4,10 +4,10 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.builtin import CommandStart
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from filters import IsPrivate, IsGroup
+from filters import IsPrivate
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo, pickup_department
 from keyboards.inline.admin_approval_new_user_reg import admin_approval_new_user
-from test import setup_google_sheets, add_user_to_sheet
+from sheet.google_sheets_integration import setup_google_sheets, add_user_to_sheet
 
 from loader import dp, bot
 from states.dispatcher_reg_data import PersonalData
@@ -229,61 +229,3 @@ async def process_admin_decision(call: types.CallbackQuery, state: FSMContext):
 async def finish_state(message: types.Message, state: FSMContext):
     command = message.text
     await state.finish()
-
-#
-# @dp.callback_query_handler(text = "✅ Send for Approval", state=PersonalData.phoneNumber)
-# async def send_to_admin_for_approval(call: types.CallbackQuery, state: FSMContext):
-#     # Retrieve user data from FSM context
-#     data = await state.get_data()
-#     full_name = data.get("realName")
-#     date_of_birth = data.get("dob")
-#     phone = data.get("phoneNumber")
-#
-#     # Prepare the message for the admin
-#     msg = (
-#         f"New User Registration Request:\n\n"
-#         f"Full Name: {full_name}\n"
-#         f"Date of Birth: {date_of_birth}\n"
-#         f"Phone Number: {phone}\n\n"
-#         "Do you approve this registration?"
-#     )
-#
-#     # Inline keyboard for admin's decision
-#     admin_buttons = InlineKeyboardMarkup(row_width=2).add(
-#         InlineKeyboardButton("✅ Approve", callback_data=f"approve_{call.from_user.id}"),
-#         InlineKeyboardButton("❌ Deny", callback_data=f"deny_{call.from_user.id}")
-#     )
-#
-#     # Replace with actual admin's Telegram ID
-#     admin_id = 5159723225
-#     # Send message to admin
-#     await bot.send_message(admin_id, msg, reply_markup=admin_buttons)
-#
-#     # Notify user that their information has been sent to the admin
-#     await call.message.edit_text(
-#         "Your registration request has been sent to the admin for approval. Please wait for the response.")
-#
-#     # Finish the user's state now that the admin has made a decision
-#     await state.finish()
-#
-#     # Callback handler for admin approval or denial
-#     @dp.callback_query_handler(lambda call: call.data.startswith("approve_") or call.data.startswith("deny_"))
-#     async def process_admin_decision(call: types.CallbackQuery, state: FSMContext):
-#         # Extract user ID and decision from callback data
-#         action, user_id = call.data.split("_")
-#         user_id = int(user_id)  # Convert to integer
-#
-#         if action == "approve":
-#             # Notify the user of approval
-#             await bot.send_message(user_id, "✅ Your registration has been approved! Welcome to MoveMe Group.")
-#             await call.answer("User approved.", show_alert=True)
-#         elif action == "deny":
-#             # Notify the user of denial
-#             await bot.send_message(user_id,
-#                                    "❌ Your registration has been denied. Please contact support for more information.")
-#             await call.answer("User denied.", show_alert=True)
-#
-#
-#
-#         # Delete the admin's decision message to keep the chat clean (optional)
-#         await call.message.delete()
