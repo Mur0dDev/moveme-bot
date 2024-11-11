@@ -36,41 +36,13 @@ from states.dispatcher_reg_data import PersonalData, DispatchState, SafetyState,
 # Start Command Handler
 # ------------------------------
 
-@dp.message_handler(IsPrivate(), commands=['start', 'help'])
-async def verify_user_role(message: types.Message):
-    """Verify user's role from Google Sheets and assign the appropriate state."""
-    telegram_id = message.from_user.id
-    sheet = setup_google_sheets()
-
-    # Retrieve the role from the Google Sheet
-    user_role = get_user_role_by_telegram_id(sheet, telegram_id)
-
-    if user_role == "Dispatcher":
-        await DispatchState.dispatch_main.set()
-        await message.answer("Welcome, Dispatcher! You’re all set to use your department’s features.")
-    elif user_role == "Safety":
-        await SafetyState.safety_main.set()
-        await message.answer("Welcome to the Safety team!")
-    elif user_role == "Driver":
-        await DriverState.driver_main.set()
-        await message.answer("Welcome, Driver! You’re ready to roll.")
-    elif user_role == "Accounting":
-        await AccountingState.accounting_main.set()
-        await message.answer("Welcome to the Accounting department.")
-    elif user_role == "Denied User":
-        await DeniedState.denied_main.set()
-        await message.answer("Your access has been denied. Contact support if you think this is an error.")
-    else:
-        # If user is not found in the sheet
-        await UnverifiedState.unverified.set()
-        welcome_text = get_random_message(welcome_messages)
-        await message.answer(welcome_text, reply_markup=new_user_letsgo)
-
 @dp.message_handler(IsPrivate(), CommandStart(), state=UnverifiedState.unverified)
 async def bot_start(message: types.Message):
     """Handler for /start command in private chat."""
+
     welcome_text = get_random_message(welcome_messages)
     await message.answer(welcome_text, reply_markup=new_user_letsgo)
+    await message.delete()
 
 # ------------------------------
 # Callback Handlers for Inline Buttons
@@ -98,8 +70,9 @@ async def back_reg(call: types.CallbackQuery):
 @dp.callback_query_handler(text="Dispatch – 📋", state=UnverifiedState.unverified)
 async def dispatch(call: types.CallbackQuery, state: FSMContext):
     """Handler for selecting the Dispatch department."""
-    await call.message.delete()
+
     await call.message.answer(get_random_message(name_prompt_messages))
+    await call.message.delete()
 
     # Store the selected role in the FSM context
     await state.update_data(role="Dispatcher")
@@ -109,8 +82,9 @@ async def dispatch(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text="Safety – 🛡️", state=UnverifiedState.unverified)
 async def safety(call: types.CallbackQuery, state: FSMContext):
     """Handler for selecting the Safety department."""
-    await call.message.delete()
+
     await call.message.answer(get_random_message(name_prompt_messages))
+    await call.message.delete()
 
     # Store the selected role in the FSM context
     await state.update_data(role="Safety")
@@ -120,9 +94,10 @@ async def safety(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text="Driver – 🚛", state=UnverifiedState.unverified)
 async def driver(call: types.CallbackQuery, state: FSMContext):
     """Handler for selecting the Driver department."""
-    await call.message.delete()
+
     message = get_random_message(under_development_messages)
     await call.message.answer(message)
+    await call.message.delete()
     # # Store the selected role in the FSM context
     # await state.update_data(role="Driver")
 
@@ -131,8 +106,9 @@ async def driver(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text="Accountant – 💰️", state=UnverifiedState.unverified)
 async def accounting(call: types.CallbackQuery, state: FSMContext):
     """Handler for selecting the Accounting department."""
-    await call.message.delete()
+
     await call.message.answer(get_random_message(name_prompt_messages))
+    await call.message.delete()
 
     # Store the selected role in the FSM context
     await state.update_data(role="Accounting")

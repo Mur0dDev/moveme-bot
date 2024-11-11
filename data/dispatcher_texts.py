@@ -42,3 +42,10 @@ close_options = [
     "🛑 Stop and Close",
     "🔚 End and Close"
 ]
+
+truck_status_under_development_messages = [
+    "🚧 Truck Status feature is still in the works! We’ll keep you updated once it’s ready. Thank you for your patience!",
+    "🛠️ The Truck Status feature is currently under development. We’ll let you know as soon as it’s available. Thanks for your understanding!",
+    "🔍 We're working hard to bring you the Truck Status feature! We'll notify you when it's good to go. Appreciate your patience!",
+    "🚛 The Truck Status feature isn’t ready just yet. Stay tuned – we’ll update you once it’s launched. Thank you!"
+]
