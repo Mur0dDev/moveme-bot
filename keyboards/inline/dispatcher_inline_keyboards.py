@@ -17,10 +17,18 @@ dispatcher_main_features = InlineKeyboardMarkup(
 
 dispatcher_start_over = InlineKeyboardMarkup(
     inline_keyboard=[
-        InlineKeyboardButton(
-            text="🔄 Start Over",
-            callback_data="Start Over"
-        )
+    [
+        InlineKeyboardButton(text="🔄 Start Over", callback_data="Start Over"),
+    ],
+])
+
+team_or_solo_driver = InlineKeyboardMarkup(
+    inline_keyboard=[
+    [
+        InlineKeyboardButton(text="👥 Team", callback_data="👥 Team"),
+    ],
+    [
+        InlineKeyboardButton(text="👤 Solo", callback_data="👤 Solo"),
     ]
-)
+])
 

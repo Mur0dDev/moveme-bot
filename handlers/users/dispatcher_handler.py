@@ -9,7 +9,10 @@ from sheet.google_sheets_integration import setup_google_sheets, get_user_role_b
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
-from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over
+from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver
+from states.assign_load_states import AssignLoad
+from utils.misc.validators import validate_full_name
+from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name
 
 
 @dp.message_handler(IsPrivate(), commands=['start', 'help'])
@@ -67,26 +70,86 @@ async def dispatcher_main(message: types.Message):
     await message.delete()
     await message.answer(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
 
+# ====== BEGIN: Assign Load Feature (Dispatcher) ======
+# ====== BEGIN: Assign Load Feature (Dispatcher) ======
+# ====== BEGIN: Assign Load Feature (Dispatcher) ======
+
+
 @dp.callback_query_handler(text="🛠️ Load Assign", state=DispatchState.dispatch_main)
 async def handle_assign_load(call: types.CallbackQuery):
     await call.answer("Assign Load feature selected.")
-    # Add further handling here
+    await call.message.answer("Please enter the Driver Name:")
+    await AssignLoad.driver_name.set()
+
+@dp.message_handler(state=AssignLoad.driver_name)
+async def enter_driver_name(message: types.Message, state: FSMContext):
+    driver_name = message.text
+
+    # Validate the driver name
+    if not validate_full_name(driver_name):
+        await message.answer("Invalid name format. Please enter a valid Driver Name.")
+        return  # Stop here if the name is invalid, allowing user to retry
+
+    # If valid, store the name and proceed to the next step
+    await state.update_data(driver_name=driver_name)
+    truck_number_format_warn_message = (
+        f"Please enter the Truck Number. It should be in one of the following formats:\n\n"
+        f"Only numbers (e.g., 1234)\n"
+        f"One letter at the beginning or end, followed by numbers (e.g., A1234 or 1234B)\n\n"
+        f"Make sure to follow these guidelines to proceed."
+    )
+    await message.answer(truck_number_format_warn_message)
+    await AssignLoad.truck_number.set()
+
+# Handler for Truck Number input with validation
+@dp.message_handler(state=AssignLoad.truck_number)
+async def enter_truck_number(message: types.Message, state: FSMContext):
+    truck_number = message.text
+    if not validate_truck_number(truck_number):
+        await message.answer("Invalid truck number format. Please enter a valid Truck Number (e.g., A1234 or 1234B).")
+        return
+    await state.update_data(truck_number=truck_number)
+    await message.answer("Please enter the Load Number:")
+    await AssignLoad.load_number.set()
+
+# Handler for Load Number input
+@dp.message_handler(state=AssignLoad.load_number)
+async def enter_load_number(message: types.Message, state: FSMContext):
+    load_number = message.text
+    if not validate_load_number(load_number):
+        await message.answer("Invalid load number format. Please enter a valid Load Number (only letters and numbers, no symbols).")
+        return
+    await state.update_data(load_number=load_number)
+    await message.answer("Please enter the Broker Name:")
+    await AssignLoad.broker_name.set()
+
+# Handler for Broker Name input with validation
+@dp.message_handler(state=AssignLoad.broker_name)
+async def enter_broker_name(message: types.Message, state: FSMContext):
+    broker_name = message.text
+    if not validate_broker_name(broker_name):
+        await message.answer("Invalid broker name format. Please enter a valid Broker Name (only letters and spaces, no numbers or symbols).")
+        return
+    await state.update_data(broker_name=broker_name)
+    await message.answer("Is this a Team or Solo load? Please type:\n\n👥 Team\n👤 Solo", reply_markup=validate_broker_name)
+    await AssignLoad.team_or_solo.set()
+
+
+
+
+# ====== END: Assign Load Feature (Dispatcher) ======
+# ====== END: Assign Load Feature (Dispatcher) ======
+# ====== END: Assign Load Feature (Dispatcher) ======
+
 
 @dp.callback_query_handler(text="🔍 Truck Status Check", state=DispatchState.dispatch_main)
 async def handle_truck_status(call: types.CallbackQuery):
+
+    await call.answer("Truck Status feature selected.")
     # Respond with an "under development" message
     message = get_random_message(truck_status_under_development_messages)
     await call.message.edit_text(message, reply_markup=dispatcher_start_over)
-    await call.answer("Truck Status feature selected.")
 
-
-# @dp.callback_query_handler(text="truck_status", state=DispatchState.dispatch_main)
-# async def handle_truck_status(call: types.CallbackQuery):
-#     # Respond with an "under development" message
-#     msg = get_random_message(truck_status_under_development_messages)
-#     await call.message.edit_text(msg, reply_markup=dispatcher_start_over)
-#     await call.answer("Truck Status feature selected.")
-#     # Add further handling here
 
 @dp.callback_query_handler(text="Start Over", state=DispatchState.dispatch_main)
 async def handle_start_over(call: types.CallbackQuery):
