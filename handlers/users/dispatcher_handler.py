@@ -3,16 +3,17 @@ from aiogram import types
 from loader import dp
 from filters import IsPrivate
 from aiogram.dispatcher.filters.builtin import CommandStart
+from aiogram.types import CallbackQuery
 from aiogram.dispatcher import FSMContext
 from states.dispatcher_reg_data import DispatchState, SafetyState, DriverState, AccountingState, DeniedState, UnverifiedState
 from sheet.google_sheets_integration import setup_google_sheets, get_user_role_by_telegram_id, get_full_name_by_user_id
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
-from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver
+from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options
 from states.assign_load_states import AssignLoad
 from utils.misc.validators import validate_full_name
-from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name
+from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location,validate_datetime_us, validate_datetime_range_us
 
 
 @dp.message_handler(IsPrivate(), commands=['start', 'help'])
@@ -131,10 +132,91 @@ async def enter_broker_name(message: types.Message, state: FSMContext):
         await message.answer("Invalid broker name format. Please enter a valid Broker Name (only letters and spaces, no numbers or symbols).")
         return
     await state.update_data(broker_name=broker_name)
-    await message.answer("Is this a Team or Solo load? Please type:\n\n👥 Team\n👤 Solo", reply_markup=validate_broker_name)
+    await message.answer("Is this a Team or Solo load? Please type:\n\n👥 Team\n👤 Solo", reply_markup=team_or_solo_driver)
     await AssignLoad.team_or_solo.set()
 
+# Callback handler for Team selection
+@dp.callback_query_handler(text="team", state=AssignLoad.team_or_solo)
+async def team_selected(call: CallbackQuery, state: FSMContext):
+    await state.update_data(team_or_solo="Team")
+    await call.message.answer("Please enter the Pickup Location:")
+    await AssignLoad.pickup_location.set()
+    await call.answer()  # Acknowledge the callback to remove loading state on the button
 
+# Callback handler for Solo selection
+@dp.callback_query_handler(text="solo", state=AssignLoad.team_or_solo)
+async def solo_selected(call: CallbackQuery, state: FSMContext):
+    await state.update_data(team_or_solo="Solo")
+    await call.message.answer("Please enter the Pickup Location:")
+    await AssignLoad.pickup_location.set()
+    await call.answer()  # Acknowledge the callback to remove loading state on the button
+
+# Handler for Pickup Location input with validation
+@dp.message_handler(state=AssignLoad.pickup_location)
+async def enter_pickup_location(message: types.Message, state: FSMContext):
+    pickup_location = message.text
+    if not validate_location(pickup_location):
+        await message.answer("Invalid location format. Please enter a valid location, including ZIP code (e.g., '123 Main St, City, State, 12345').")
+        return
+    await state.update_data(pickup_location=pickup_location)
+    await message.answer("Please enter the Pickup Date & Time (e.g., YYYY-MM-DD HH:MM):", reply_markup=pickup_datetime_options)
+    await AssignLoad.pickup_datetime.set()
+
+# Callback handler for Appointment Date & Time
+@dp.callback_query_handler(text="appointment_datetime", state=AssignLoad.pickup_datetime)
+async def select_appointment_datetime(call: CallbackQuery, state: FSMContext):
+    await call.message.answer("Please enter the Appointment Date & Time (e.g., MM/DD/YYYY HH:MM):")
+    await state.update_data(datetime_type="appointment")
+    await AssignLoad.pickup_datetime.set()
+    await call.answer()
+
+# Callback handler for Date & Time (Range Possible)
+@dp.callback_query_handler(text="datetime_range", state=AssignLoad.pickup_datetime)
+async def select_datetime_range(call: CallbackQuery, state: FSMContext):
+    await call.message.answer("Please enter the Pickup Date & Time range (e.g., MM/DD/YYYY HH:MM - HH:MM):")
+    await state.update_data(datetime_type="range")
+    await AssignLoad.pickup_datetime.set()
+    await call.answer()
+
+# Callback handler for First Come First Serve (FCFS)
+@dp.callback_query_handler(text="fcfs", state=AssignLoad.pickup_datetime)
+async def select_fcfs(call: CallbackQuery, state: FSMContext):
+    await state.update_data(datetime_type="fcfs", pickup_datetime="First Come First Serve")
+    await call.message.answer("Please enter the Delivery Location:")
+    await AssignLoad.delivery_location.set()
+    await call.answer()
+
+# Unified handler for Pickup Date & Time input based on dispatcher selection
+@dp.message_handler(state=AssignLoad.pickup_datetime)
+async def enter_pickup_datetime(message: types.Message, state: FSMContext):
+    # Retrieve the datetime type selected by the dispatcher
+    data = await state.get_data()
+    datetime_type = data.get("datetime_type")
+    pickup_datetime_input = message.text
+
+    if datetime_type == "appointment":
+        # Appointment Date & Time: Validate single datetime format
+        if not validate_datetime_us(pickup_datetime_input):
+            await message.answer("Invalid format. Please enter the Appointment Date & Time in the format: MM/DD/YYYY HH:MM")
+            return
+        await state.update_data(pickup_datetime=pickup_datetime_input)
+
+    elif datetime_type == "range":
+        # Date & Time (Range Possible): Validate either single datetime or datetime range
+        if not (validate_datetime_us(pickup_datetime_input) or validate_datetime_range_us(pickup_datetime_input)):
+            await message.answer("Invalid format. Please enter the Pickup Date & Time in one of the following formats:\n"
+                                 "- Single: MM/DD/YYYY HH:MM\n"
+                                 "- Range: MM/DD/YYYY HH:MM - HH:MM")
+            return
+        await state.update_data(pickup_datetime=pickup_datetime_input)
+
+    elif datetime_type == "fcfs":
+        # First Come First Serve: Automatically set value without validation
+        await state.update_data(pickup_datetime="First Come First Serve")
+
+    # Proceed to the next step after setting pickup_datetime
+    await message.answer("Please enter the Delivery Location:")
+    await AssignLoad.delivery_location.set()
 
 
 # ====== END: Assign Load Feature (Dispatcher) ======
