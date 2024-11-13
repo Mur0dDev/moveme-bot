@@ -32,7 +32,6 @@ team_or_solo_driver = InlineKeyboardMarkup(
     ]
 ])
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Inline keyboard for Pickup Date & Time options
 pickup_datetime_options = InlineKeyboardMarkup(row_width=1)
@@ -40,6 +39,23 @@ pickup_datetime_options.add(
     InlineKeyboardButton(text="📅 Appointment Date & Time", callback_data="appointment_datetime"),
     InlineKeyboardButton(text="⏰ Date & Time (Range Possible)", callback_data="datetime_range"),
     InlineKeyboardButton(text="🚛 First Come First Serve", callback_data="fcfs")
+)
+
+# Inline keyboard for Delivery Date & Time options
+delivery_datetime_options = InlineKeyboardMarkup(row_width=1)
+delivery_datetime_options.add(
+    InlineKeyboardButton(text="📅 Appointment Date & Time", callback_data="delivery_appointment_datetime"),
+    InlineKeyboardButton(text="⏰ Date & Time (Range Possible)", callback_data="delivery_datetime_range"),
+    InlineKeyboardButton(text="🚛 First Come First Serve", callback_data="delivery_fcfs")
+)
+
+
+# Inline keyboard for confirmation options
+confirmation_options = InlineKeyboardMarkup(row_width=1)
+confirmation_options.add(
+    InlineKeyboardButton(text="✅ Send Data", callback_data="confirm_send_data"),
+    InlineKeyboardButton(text="✏️ Edit", callback_data="confirm_edit"),
+    InlineKeyboardButton(text="❌ Close", callback_data="confirm_close")
 )
 
 

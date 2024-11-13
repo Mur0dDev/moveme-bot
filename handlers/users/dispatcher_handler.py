@@ -10,10 +10,10 @@ from sheet.google_sheets_integration import setup_google_sheets, get_user_role_b
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
-from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options
+from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options
 from states.assign_load_states import AssignLoad
 from utils.misc.validators import validate_full_name
-from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location,validate_datetime_us, validate_datetime_range_us
+from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location,validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
 
 
 @dp.message_handler(IsPrivate(), commands=['start', 'help'])
@@ -218,6 +218,140 @@ async def enter_pickup_datetime(message: types.Message, state: FSMContext):
     await message.answer("Please enter the Delivery Location:")
     await AssignLoad.delivery_location.set()
 
+@dp.message_handler(state=AssignLoad.delivery_location)
+async def enter_delivery_location(message: types.Message, state: FSMContext):
+    delivery_location = message.text
+
+    # Validate the delivery location format
+    if not validate_location(delivery_location):
+        await message.answer(
+            "Invalid location format. Please enter a valid delivery location including ZIP code "
+            "(e.g., '123 Main St, City, State, 12345')."
+        )
+        return  # Stops here if the location is invalid, allowing the dispatcher to retry
+
+    # If valid, store the location and proceed to the next step
+    await state.update_data(delivery_location=delivery_location)
+    await message.answer("Please enter the Delivery Date & Time (e.g., MM/DD/YYYY HH:MM):", reply_markup=delivery_datetime_options)
+    await AssignLoad.delivery_datetime.set()
+
+@dp.callback_query_handler(text="delivery_appointment_datetime", state=AssignLoad.delivery_datetime)
+async def select_delivery_appointment_datetime(call: CallbackQuery, state: FSMContext):
+    await call.message.answer("Please enter the Delivery Appointment Date & Time (e.g., MM/DD/YYYY HH:MM):")
+    await state.update_data(datetime_type="appointment")
+    await AssignLoad.delivery_datetime.set()
+    await call.answer()
+
+@dp.callback_query_handler(text="delivery_datetime_range", state=AssignLoad.delivery_datetime)
+async def select_delivery_datetime_range(call: CallbackQuery, state: FSMContext):
+    await call.message.answer("Please enter the Delivery Date & Time range (e.g., MM/DD/YYYY HH:MM - HH:MM):")
+    await state.update_data(datetime_type="range")
+    await AssignLoad.delivery_datetime.set()
+    await call.answer()
+
+@dp.callback_query_handler(text="delivery_fcfs", state=AssignLoad.delivery_datetime)
+async def select_delivery_fcfs(call: CallbackQuery, state: FSMContext):
+    await state.update_data(datetime_type="fcfs", delivery_datetime="First Come First Serve")
+    await call.message.answer("Please enter the Loaded Miles:")
+    await AssignLoad.loaded_miles.set()
+    await call.answer()
+
+@dp.message_handler(state=AssignLoad.delivery_datetime)
+async def enter_delivery_datetime(message: types.Message, state: FSMContext):
+    # Retrieve the datetime type selected by the dispatcher
+    data = await state.get_data()
+    datetime_type = data.get("datetime_type")
+    delivery_datetime_input = message.text
+
+    if datetime_type == "appointment":
+        # Appointment Date & Time: Validate single datetime format
+        if not validate_datetime_us(delivery_datetime_input):
+            await message.answer("Invalid format. Please enter the Delivery Date & Time in the format: MM/DD/YYYY HH:MM")
+            return
+        await state.update_data(delivery_datetime=delivery_datetime_input)
+
+    elif datetime_type == "range":
+        # Date & Time (Range Possible): Validate either single datetime or datetime range
+        if not (validate_datetime_us(delivery_datetime_input) or validate_datetime_range_us(delivery_datetime_input)):
+            await message.answer("Invalid format. Please enter the Delivery Date & Time in one of the following formats:\n"
+                                 "- Single: MM/DD/YYYY HH:MM\n"
+                                 "- Range: MM/DD/YYYY HH:MM - HH:MM")
+            return
+        await state.update_data(delivery_datetime=delivery_datetime_input)
+
+    elif datetime_type == "fcfs":
+        # First Come First Serve: Automatically set value without validation
+        await state.update_data(delivery_datetime="First Come First Serve")
+
+    # Proceed to the next step after setting delivery_datetime
+    await message.answer("Please enter the Loaded Miles:")
+    await AssignLoad.loaded_miles.set()
+
+@dp.message_handler(state=AssignLoad.loaded_miles)
+async def enter_loaded_miles(message: types.Message, state: FSMContext):
+    loaded_miles = message.text
+
+    # Validate loaded miles using the regular expression
+    if not validate_loaded_miles(loaded_miles):
+        await message.answer("Invalid input. Please enter a positive numerical value for Loaded Miles (e.g., 100 or 100.5).")
+        return
+
+    # Convert to float for precision and update state
+    await state.update_data(loaded_miles=float(loaded_miles))
+    await message.answer("Please enter the Deadhead Miles:")
+    await AssignLoad.deadhead_miles.set()
+
+@dp.message_handler(state=AssignLoad.deadhead_miles)
+async def enter_deadhead_miles(message: types.Message, state: FSMContext):
+    deadhead_miles = message.text
+
+    # Validate deadhead miles using the regular expression
+    if not validate_loaded_miles(deadhead_miles):  # Reusing validate_loaded_miles for similar validation
+        await message.answer("Invalid input. Please enter a positive numerical value for Deadhead Miles (e.g., 50 or 50.5).")
+        return
+
+    # Convert to float for precision and update state
+    await state.update_data(deadhead_miles=float(deadhead_miles))
+    await message.answer("Please enter the Trip Rate:")
+    await AssignLoad.load_rate.set()
+
+@dp.message_handler(state=AssignLoad.load_rate)
+async def enter_load_rate(message: types.Message, state: FSMContext):
+    load_rate = message.text
+
+    # Validate load rate using the regular expression
+    if not validate_loaded_miles(load_rate):  # Reusing validate_loaded_miles for similar validation
+        await message.answer("Invalid input. Please enter a positive numerical value for Load Rate (e.g., 1500 or 1500.75).")
+        return
+
+    # Convert to float for precision and update state
+    await state.update_data(load_rate=float(load_rate))
+
+    # Retrieve all entered data from state
+    data = await state.get_data()
+
+    # Format the summary of load details
+    summary = (
+        f"**Load Assignment Summary**\n"
+        f"Driver Name: {data.get('driver_name')}\n"
+        f"Truck Number: {data.get('truck_number')}\n"
+        f"Load Number: {data.get('load_number')}\n"
+        f"Broker Name: {data.get('broker_name')}\n"
+        f"Load Type: {data.get('team_or_solo')}\n"
+        f"Pickup Location: {data.get('pickup_location')}\n"
+        f"Pickup Date & Time: {data.get('pickup_datetime')}\n"
+        f"Delivery Location: {data.get('delivery_location')}\n"
+        f"Delivery Date & Time: {data.get('delivery_datetime')}\n"
+        f"Loaded Miles: {data.get('loaded_miles')}\n"
+        f"Deadhead Miles: {data.get('deadhead_miles')}\n"
+        f"Load Rate: {data.get('load_rate')}\n"
+    )
+
+    await message.answer(summary + "\n\nReview your load details and confirm to submit or edit.", reply_markup=confirmation_options)
+    await AssignLoad.confirmation.set()
+
+
+
 
 # ====== END: Assign Load Feature (Dispatcher) ======
 # ====== END: Assign Load Feature (Dispatcher) ======
@@ -248,7 +382,3 @@ async def handle_close(call: types.CallbackQuery):
     await call.message.delete()
     await call.answer("Closing the dispatcher menu.")
     # Add further handling here
-
-
-
-
