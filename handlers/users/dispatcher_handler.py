@@ -18,21 +18,17 @@ from utils.misc.load_assignment_validations import validate_truck_number, valida
 
 @dp.message_handler(IsPrivate(), commands=['start', 'help'])
 async def verify_user_role(message: types.Message):
-    """Verify user's role from Google Sheets and assign the appropriate state."""
+    """Verify user's role from cached data and assign the appropriate state."""
 
     telegram_id = message.from_user.id
-    sheet = setup_google_sheets()
 
-    # Retrieve the role from the Google Sheet
-    user_role = get_user_role_by_telegram_id(sheet, telegram_id)
+    # Retrieve the role from the cache
+    user_role = get_user_role_by_telegram_id(telegram_id)  # Remove 'sheet' argument
 
     if user_role == "Dispatcher":
         await DispatchState.dispatch_main.set()
-        # Get the user's Telegram ID
-        user_id = message.from_user.id
-
-        # Retrieve the full name from Google Sheets based on user_id
-        full_name = get_full_name_by_user_id(user_id)
+        # Retrieve the full name from the cache based on user_id
+        full_name = get_full_name_by_user_id(telegram_id)
 
         await message.delete()
         await message.answer(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
@@ -54,10 +50,11 @@ async def verify_user_role(message: types.Message):
         await message.answer("Your access has been denied. Contact support if you think this is an error.")
 
     else:
-        # If user is not found in the sheet
+        # If user is not found in the cache
         await UnverifiedState.unverified.set()
         welcome_text = get_random_message(welcome_messages)
         await message.answer(welcome_text, reply_markup=new_user_letsgo)
+
 
 
 @dp.message_handler(IsPrivate(), CommandStart(), state=DispatchState.dispatch_main)
