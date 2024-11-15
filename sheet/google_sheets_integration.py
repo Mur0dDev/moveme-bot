@@ -148,6 +148,42 @@ def add_user_to_sheet(sheet, user_data):
     sheet.append_row(row)
     print("User added to Google Sheets.")
 
+
+def add_group_to_google_sheet(group_data: dict):
+    """
+    Writes approved group data to the Google Sheets 'Group Credentials' sheet.
+
+    Args:
+        group_data (dict): A dictionary containing the group's details.
+            Expected keys: 'group_id', 'company_name', 'group_name', 'group_type', 'truck_number', 'driver_name'
+
+    Raises:
+        Exception: If there is an issue with Google Sheets interaction.
+    """
+    print("Adding group data to Google Sheets...")
+
+    # Set up the connection to the Group Credentials sheet
+    sheet = setup_group_credentials_sheet()
+
+    # Prepare the row to be added to the sheet
+    row = [
+        group_data.get("group_id"),  # Group ID
+        group_data.get("company_name"),  # Company Name
+        group_data.get("group_name"),  # Group Name
+        group_data.get("group_type"),  # Group Type
+        group_data.get("truck_number"),  # Truck Number (if applicable)
+        group_data.get("driver_name")  # Driver Name (if applicable)
+    ]
+
+    # Append the row to the Google Sheet
+    try:
+        sheet.append_row(row, value_input_option="RAW")
+        print("Group data successfully added to Google Sheets.")
+    except Exception as e:
+        print("Failed to write group data to Google Sheets.")
+        raise e
+
+
 def get_full_name_by_user_id(user_id: int) -> str:
     """
     Retrieves the full name of a user from the cache by their Telegram ID.
@@ -159,20 +195,20 @@ def get_full_name_by_user_id(user_id: int) -> str:
     return full_name
 
 
-if __name__ == "__main__":
-    # Step 1: Update the cache with the latest data
-    update_cache()
-
-    # Step 2: Print the caches to verify data
-    print("User Cache:", user_cache)
-    print("Group Cache:", group_cache)
-
-    # Optional Step 3: Test retrieval functions with sample IDs
-    test_telegram_id = 6697656102  # Replace with actual Telegram ID
-    test_group_id = 987654321  # Replace with actual Group ID
-
-    user_full_name = get_user_full_name_by_telegram_id(test_telegram_id)
-    print(f"User Full Name for Telegram ID {test_telegram_id}: {user_full_name}")
-
-    is_group_verified = check_group_verification(test_group_id)
-    print(f"Is Group {test_group_id} Verified? {is_group_verified}")
+# if __name__ == "__main__":
+#     # Step 1: Update the cache with the latest data
+#     update_cache()
+#
+#     # Step 2: Print the caches to verify data
+#     print("User Cache:", user_cache)
+#     print("Group Cache:", group_cache)
+#
+#     # Optional Step 3: Test retrieval functions with sample IDs
+#     test_telegram_id = 6697656102  # Replace with actual Telegram ID
+#     test_group_id = 987654321  # Replace with actual Group ID
+#
+#     user_full_name = get_user_full_name_by_telegram_id(test_telegram_id)
+#     print(f"User Full Name for Telegram ID {test_telegram_id}: {user_full_name}")
+#
+#     is_group_verified = check_group_verification(test_group_id)
+#     print(f"Is Group {test_group_id} Verified? {is_group_verified}")
