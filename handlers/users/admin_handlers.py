@@ -1,7 +1,8 @@
 import logging
 from aiogram import types
+from aiogram.dispatcher.filters import Text
 
-from keyboards.inline.super_admin_inline_keyboards import get_verification_request_keyboard
+from keyboards.inline.super_admin_inline_keyboards import get_verification_request_keyboard, get_group_verification_keyboard
 from loader import dp, bot
 from sheet.google_sheets_integration import add_group_to_google_sheet, update_group_cache
 from sheet.google_sheets_integration import handle_update_command, user_cache, group_cache, update_cache, \
@@ -92,3 +93,69 @@ async def handle_close_request(callback_query: types.CallbackQuery):
     # Delete the message
     await callback_query.message.delete()
     await callback_query.answer()  # Acknowledge the callback
+
+@dp.callback_query_handler(lambda c: c.data == "approve_request")
+async def handle_approve_group(callback_query: types.CallbackQuery):
+    await callback_query.answer(f"Group approved!")
+    await callback_query.message.edit_text(f"Group has been successfully approved.", reply_markup=get_group_verification_keyboard)
+
+
+@dp.callback_query_handler(lambda c: c.data == "deny_request")
+async def handle_deny_group(callback_query: types.CallbackQuery):
+    """
+    Handles the 'Deny Group' button and notifies the group.
+    """
+    try:
+        # Extract group ID from callback data
+        callback_data = callback_query.data
+        _, group_id_str = callback_data.split(":")  # Split callback data by ':'
+
+        # Ensure group ID is a valid integer
+        if not group_id_str.isdigit():
+            raise ValueError("Invalid group ID format.")
+
+        group_id = int(group_id_str)  # Convert to integer
+        admin_username = callback_query.from_user.username
+
+        # Notify the admin in the callback
+        await callback_query.answer("Group denied!")
+
+        # Notify the group about the denial
+        denial_message = (
+            f"This group is not approved for bot usage by the bot admin @{admin_username}. "
+            "Please contact them for more information."
+        )
+        await callback_query.bot.send_message(chat_id=group_id, text=denial_message)
+
+        # Edit the original message for the admin
+        await callback_query.message.edit_text("Group has been denied.")
+
+    except ValueError as e:
+        # Log and notify about invalid callback data
+        await callback_query.answer("Invalid callback data!", show_alert=True)
+        print(f"Error processing deny_group callback: {e}")
+
+
+@dp.callback_query_handler(Text(equals="verify_gm_cargo"))
+async def handle_verify_gm_cargo(callback_query: types.CallbackQuery):
+    """
+    Handles the "GM Cargo LLC" button.
+    """
+    await callback_query.answer("You selected GM Cargo LLC.")
+    await callback_query.message.edit_text("GM Cargo LLC selected for verification.\n")
+
+@dp.callback_query_handler(Text(equals="verify_elmir"))
+async def handle_verify_elmir(callback_query: types.CallbackQuery):
+    """
+    Handles the "Elmir INC" button.
+    """
+    await callback_query.answer("You selected Elmir INC.")
+    await callback_query.message.edit_text("Elmir INC selected for verification.")
+
+@dp.callback_query_handler(Text(equals="close_verification"))
+async def handle_close_verification(callback_query: types.CallbackQuery):
+    """
+    Handles the "Close" button.
+    """
+    await callback_query.answer("Verification process closed.")
+    await callback_query.message.delete()

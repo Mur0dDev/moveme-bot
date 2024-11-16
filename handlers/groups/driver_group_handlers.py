@@ -43,3 +43,5 @@ async def group_start_command(message: types.Message):
     await message.reply(f"Welcome, {full_name}! This group is verified, and you have access to use the bot.")
 
 
+
+
