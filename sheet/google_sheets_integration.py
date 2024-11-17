@@ -1,8 +1,10 @@
 import os
+import logging
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 json_file_path = "C:\\Users\\user\\PycharmProjects\\moveme-bot\\autobot.json"
+home_json_file_path = "E:\\GitHub Projects\\moveme-bot\\autobot.json"
 
 # Cache dictionaries for user and group data
 user_cache = {}
@@ -14,7 +16,7 @@ def setup_google_sheets():
     Sets up Google Sheets connection to the "User Credentials" sheet.
     """
     print("Setting up Google Sheets connection for User Credentials...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -29,7 +31,7 @@ def setup_group_credentials_sheet():
     Sets up Google Sheets connection to the "Group Credentials" sheet.
     """
     print("Setting up Google Sheets connection for Group Credentials...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -148,40 +150,25 @@ def add_user_to_sheet(sheet, user_data):
     sheet.append_row(row)
     print("User added to Google Sheets.")
 
-
-def add_group_to_google_sheet(group_data: dict):
+def add_group_to_google_sheet(group_data):
     """
-    Writes approved group data to the Google Sheets 'Group Credentials' sheet.
-
-    Args:
-        group_data (dict): A dictionary containing the group's details.
-            Expected keys: 'group_id', 'company_name', 'group_name', 'group_type', 'truck_number', 'driver_name'
-
-    Raises:
-        Exception: If there is an issue with Google Sheets interaction.
+    Writes group data to the 'Group Credentials' sheet in Google Sheets.
     """
-    print("Adding group data to Google Sheets...")
-
-    # Set up the connection to the Group Credentials sheet
-    sheet = setup_group_credentials_sheet()
-
-    # Prepare the row to be added to the sheet
-    row = [
-        group_data.get("group_id"),  # Group ID
-        group_data.get("company_name"),  # Company Name
-        group_data.get("group_name"),  # Group Name
-        group_data.get("group_type"),  # Group Type
-        group_data.get("truck_number"),  # Truck Number (if applicable)
-        group_data.get("driver_name")  # Driver Name (if applicable)
-    ]
-
-    # Append the row to the Google Sheet
     try:
-        sheet.append_row(row, value_input_option="RAW")
-        print("Group data successfully added to Google Sheets.")
+        sheet = setup_group_credentials_sheet()
+        sheet.append_row([
+            group_data["group_id"],
+            group_data["company_name"],
+            group_data["group_name"],
+            group_data["group_type"],
+            group_data["truck_number"],
+            group_data["driver_name"],
+        ])
+        print("Group data successfully written to Google Sheets.")
     except Exception as e:
-        print("Failed to write group data to Google Sheets.")
-        raise e
+        logging.exception(f"Error writing to Google Sheets: {e}")
+        raise
+
 
 
 def get_full_name_by_user_id(user_id: int) -> str:
