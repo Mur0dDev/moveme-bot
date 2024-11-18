@@ -1,6 +1,7 @@
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
 class AssignLoad(StatesGroup):
+    company_name = State()
     driver_name = State()
     truck_number = State()
     load_number = State()

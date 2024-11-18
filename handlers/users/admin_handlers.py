@@ -2,7 +2,7 @@ import logging
 from aiogram import types
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher import FSMContext
-from states.assign_load_states import AssignLoad
+from states.super_admin_states import GroupVerificationStates, CacheManagementStates
 from keyboards.inline.super_admin_inline_keyboards import (
     get_verification_request_keyboard,
     get_group_verification_keyboard,
@@ -27,26 +27,23 @@ from sheet.google_sheets_integration import (
 )
 
 
-# Handler for the '/update' command to update cache
 @dp.message_handler(IsPrivate(), IsSuperAdmin(), commands=['update'])
-async def update_cache_command(message: types.Message):
+async def update_cache_command(message: types.Message, state: FSMContext):
     """
     Updates the cache for user and group data from Google Sheets.
-    Only the super admin can execute this command.
     """
-    result_message = await handle_update_command()
+    await message.answer("Updating cache... Please wait.")
+    await CacheManagementStates.updating_cache.set()
 
-    # Prepare summaries for logging
-    user_data_summary = "\n".join(
-        [f"Telegram ID: {telegram_id}, Full Name: {data}" for telegram_id, data in user_cache.items()]
-    )
-    group_data_summary = "\n".join(
-        [f"Group ID: {group_id}, Data: {data}" for group_id, data in group_cache.items()]
-    )
+    try:
+        result_message = await handle_update_command()
+        await message.answer(f"Cache updated successfully!\n\n{result_message}")
+    except Exception as e:
+        logging.exception(f"Error updating cache: {e}")
+        await message.answer("Failed to update the cache. Please check the logs.")
 
-    # Compile response and send to admin
-    response = f"{result_message}\n\nUpdated User Data:\n{user_data_summary}\n\nUpdated Group Data:\n{group_data_summary}"
-    await message.reply(response)
+    # Finish the state
+    await state.finish()
 
 
 # Request Admin Approval
@@ -97,13 +94,16 @@ async def handle_approve_group(callback_query: types.CallbackQuery, state: FSMCo
             "The group has been successfully approved. Please select the group type:",
             reply_markup=get_group_type_selection_keyboard(group_id)
         )
+
+        # Set the state for group type selection
+        await GroupVerificationStates.group_type.set()
     except Exception as e:
         await callback_query.answer("Failed to approve the group. Please check the logs.", show_alert=True)
         logging.exception(f"Error in handle_approve_group: {e}")
 
 
 # Group Type Selection
-@dp.callback_query_handler(Text(startswith="set_group_type:"))
+@dp.callback_query_handler(Text(startswith="set_group_type:"), state=GroupVerificationStates.group_type)
 async def handle_set_group_type(callback_query: types.CallbackQuery, state: FSMContext):
     try:
         _, group_type, group_id_str = callback_query.data.split(":")
@@ -126,31 +126,33 @@ async def handle_set_group_type(callback_query: types.CallbackQuery, state: FSMC
                 "Now please choose a company name from below:",
                 reply_markup=get_group_verification_keyboard()
             )
+
+            await GroupVerificationStates.company_name.set()
     except Exception as e:
         await callback_query.answer("Failed to set the group type. Please check the logs.", show_alert=True)
         logging.exception(f"Error in handle_set_group_type: {e}")
 
 
 # Verify GM Cargo
-@dp.callback_query_handler(Text(equals="verify_gm_cargo"))
+@dp.callback_query_handler(Text(equals="verify_gm_cargo"), state=GroupVerificationStates.company_name)
 async def handle_verify_gm_cargo(callback_query: types.CallbackQuery, state: FSMContext):
     await state.update_data(company_name="GM Cargo LLC")
     await callback_query.answer("GM Cargo LLC selected.")
     await callback_query.message.edit_text("GM Cargo LLC selected. Enter Truck Number:")
-    await AssignLoad.truck_number.set()
+    await GroupVerificationStates.truck_number.set()
 
 
 # Verify Elmir
-@dp.callback_query_handler(Text(equals="verify_elmir"))
+@dp.callback_query_handler(Text(equals="verify_elmir"), state=GroupVerificationStates.company_name)
 async def handle_verify_elmir(callback_query: types.CallbackQuery, state: FSMContext):
     await state.update_data(company_name="Elmir INC")
     await callback_query.answer("Elmir INC selected.")
     await callback_query.message.edit_text("Elmir INC selected. Enter Truck Number:")
-    await AssignLoad.truck_number.set()
+    await GroupVerificationStates.truck_number.set()
 
 
 # Truck Number Input
-@dp.message_handler(state=AssignLoad.truck_number)
+@dp.message_handler(state=GroupVerificationStates.truck_number)
 async def enter_truck_number(message: types.Message, state: FSMContext):
     truck_number = message.text
     if not validate_truck_number(truck_number):
@@ -158,11 +160,11 @@ async def enter_truck_number(message: types.Message, state: FSMContext):
         return
     await state.update_data(truck_number=truck_number)
     await message.answer("Please enter Driver Name:")
-    await AssignLoad.driver_name.set()
+    await GroupVerificationStates.driver_name.set()
 
 
 # Driver Name Input and Write to Google Sheet
-@dp.message_handler(state=AssignLoad.driver_name)
+@dp.message_handler(state=GroupVerificationStates.driver_name)
 async def enter_driver_name(message: types.Message, state: FSMContext):
     driver_name = message.text
     if not validate_full_name(driver_name):
@@ -201,5 +203,8 @@ async def enter_driver_name(message: types.Message, state: FSMContext):
         logging.exception(f"Error writing data to Google Sheets: {e}")
         await message.answer("An error occurred while saving the data.")
 
-    # Clear FSM state
-    await state.finish()
+    # Clear FSM state safely
+    try:
+        await state.finish()
+    except KeyError as e:
+        logging.warning(f"Attempted to finish FSM state, but the state was already cleared: {e}")

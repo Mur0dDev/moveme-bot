@@ -2,34 +2,32 @@
 from aiogram import types
 from loader import dp
 from filters import IsPrivate
-from aiogram.dispatcher.filters.builtin import CommandStart
-from aiogram.types import CallbackQuery
+from aiogram.dispatcher.filters.builtin import CommandStart, Text
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
 from states.dispatcher_reg_data import DispatchState, SafetyState, DriverState, AccountingState, DeniedState, UnverifiedState
-from sheet.google_sheets_integration import setup_google_sheets, get_user_role_by_telegram_id, get_full_name_by_user_id
+from sheet.google_sheets_integration import setup_google_sheets, get_user_role_by_telegram_id, get_full_name_by_user_id, group_cache, user_cache
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
 from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options
 from states.assign_load_states import AssignLoad
 from utils.misc.validators import validate_full_name
-from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location,validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
+from utils.utilities.search_utilities import search_company_name, search_driver_name, search_truck_number
+from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location, validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
 
 
 @dp.message_handler(IsPrivate(), commands=['start', 'help'])
 async def verify_user_role(message: types.Message):
     """Verify user's role from cached data and assign the appropriate state."""
-
     telegram_id = message.from_user.id
 
     # Retrieve the role from the cache
-    user_role = get_user_role_by_telegram_id(telegram_id)  # Remove 'sheet' argument
+    user_role = get_user_role_by_telegram_id(telegram_id)
 
     if user_role == "Dispatcher":
         await DispatchState.dispatch_main.set()
-        # Retrieve the full name from the cache based on user_id
         full_name = get_full_name_by_user_id(telegram_id)
-
         await message.delete()
         await message.answer(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
 
@@ -56,58 +54,126 @@ async def verify_user_role(message: types.Message):
         await message.answer(welcome_text, reply_markup=new_user_letsgo)
 
 
-
 @dp.message_handler(IsPrivate(), CommandStart(), state=DispatchState.dispatch_main)
 async def dispatcher_main(message: types.Message):
     """Main menu for dispatcher-specific features."""
-    # Get the user's Telegram ID
     user_id = message.from_user.id
-
-    # Retrieve the full name from Google Sheets based on user_id
     full_name = get_full_name_by_user_id(user_id)
     await message.delete()
     await message.answer(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
 
-# ====== BEGIN: Assign Load Feature (Dispatcher) ======
-# ====== BEGIN: Assign Load Feature (Dispatcher) ======
-# ====== BEGIN: Assign Load Feature (Dispatcher) ======
 
-
+# Assign Load Workflow
 @dp.callback_query_handler(text="🛠️ Load Assign", state=DispatchState.dispatch_main)
 async def handle_assign_load(call: types.CallbackQuery):
     await call.answer("Assign Load feature selected.")
-    await call.message.answer("Please enter the Driver Name:")
+    await call.message.answer("Please search and select a Company Name:")
+    await AssignLoad.company_name.set()
+
+
+@dp.message_handler(state=AssignLoad.company_name)
+async def search_and_select_company_name(message: types.Message, state: FSMContext):
+    company_name = message.text
+
+    print(company_name)
+    print(group_cache)
+    print(search_company_name(company_name, group_cache))
+
+    # Pass the group_cache to the search function
+    matched_companies = search_company_name(company_name, group_cache)
+
+    if not matched_companies:
+        await message.answer(f"No matching companies found for '{company_name}'. Please try again.")
+        return
+
+    # Display options as inline buttons
+    company_buttons = InlineKeyboardMarkup(row_width=1)
+    for company in matched_companies:
+        company_buttons.add(InlineKeyboardButton(
+            text=company,
+            callback_data=f"select_company:{company}"
+        ))
+
+    await message.answer("Select a company:", reply_markup=company_buttons)
+
+
+@dp.callback_query_handler(Text(startswith="select_company"), state=AssignLoad.company_name)
+async def handle_company_selection(call: types.CallbackQuery, state: FSMContext):
+    _, selected_company = call.data.split(":")
+    await state.update_data(company_name=selected_company)
+
+    await call.message.answer(f"Company '{selected_company}' selected. Please search and select a Driver Name:")
     await AssignLoad.driver_name.set()
+    await call.answer()
+
 
 @dp.message_handler(state=AssignLoad.driver_name)
-async def enter_driver_name(message: types.Message, state: FSMContext):
+async def search_and_select_driver_name(message: types.Message, state: FSMContext):
     driver_name = message.text
 
-    # Validate the driver name
-    if not validate_full_name(driver_name):
-        await message.answer("Invalid name format. Please enter a valid Driver Name.")
-        return  # Stop here if the name is invalid, allowing user to retry
+    # Pass the user_cache to the search function
+    matched_drivers = search_driver_name(driver_name, user_cache)
 
-    # If valid, store the name and proceed to the next step
-    await state.update_data(driver_name=driver_name)
-    truck_number_format_warn_message = (
-        f"Please enter the Truck Number. It should be in one of the following formats:\n\n"
-        f"Only numbers (e.g., 1234)\n"
-        f"One letter at the beginning or end, followed by numbers (e.g., A1234 or 1234B)\n\n"
-        f"Make sure to follow these guidelines to proceed."
-    )
-    await message.answer(truck_number_format_warn_message)
-    await AssignLoad.truck_number.set()
-
-# Handler for Truck Number input with validation
-@dp.message_handler(state=AssignLoad.truck_number)
-async def enter_truck_number(message: types.Message, state: FSMContext):
-    truck_number = message.text
-    if not validate_truck_number(truck_number):
-        await message.answer("Invalid truck number format. Please enter a valid Truck Number (e.g., A1234 or 1234B).")
+    if not matched_drivers:
+        await message.answer(f"No matching drivers found for '{driver_name}'. Please try again.")
         return
-    await state.update_data(truck_number=truck_number)
-    await message.answer("Please enter the Load Number:")
+
+    # Display driver options
+    driver_buttons = InlineKeyboardMarkup(row_width=1)
+    for driver in matched_drivers:
+        driver_buttons.add(InlineKeyboardButton(
+            text=f"{driver['Full Name']} - Truck: {driver.get('Truck Number', 'N/A')}",
+            callback_data=f"select_driver:{driver['Telegram ID']}"
+        ))
+
+    await message.answer("Select a driver:", reply_markup=driver_buttons)
+
+
+@dp.callback_query_handler(Text(startswith="select_driver"), state=AssignLoad.driver_name)
+async def handle_driver_selection(call: types.CallbackQuery, state: FSMContext):
+    _, selected_driver_id = call.data.split(":")
+    driver_data = user_cache.get(selected_driver_id)
+
+    if not driver_data:
+        await call.answer("Driver not found. Please try again.", show_alert=True)
+        return
+
+    await state.update_data(driver_name=driver_data["Full Name"], truck_number=driver_data.get("Truck Number"))
+    await call.message.answer(f"Driver '{driver_data['Full Name']}' selected. Now, please search and select a Truck Number:")
+    await AssignLoad.truck_number.set()
+    await call.answer()
+
+
+@dp.message_handler(state=AssignLoad.truck_number)
+async def search_and_select_truck_number(message: types.Message, state: FSMContext):
+    truck_number = message.text
+
+    # Pass the user_cache to the search function
+    matched_trucks = search_truck_number(truck_number, user_cache)
+
+    if not matched_trucks:
+        await message.answer(f"No matching trucks found for '{truck_number}'. Please try again.")
+        return
+
+    # Display truck options
+    truck_buttons = InlineKeyboardMarkup(row_width=1)
+    for truck in matched_trucks:
+        truck_buttons.add(InlineKeyboardButton(
+            text=f"Truck: {truck['Truck Number']} - Driver: {truck['Full Name']}",
+            callback_data=f"select_truck:{truck['Truck Number']}"
+        ))
+
+    await message.answer("Select a truck:", reply_markup=truck_buttons)
+
+
+@dp.callback_query_handler(Text(startswith="select_truck"), state=AssignLoad.truck_number)
+async def handle_truck_selection(call: types.CallbackQuery, state: FSMContext):
+    _, selected_truck = call.data.split(":")
+    await state.update_data(truck_number=selected_truck)
+
+    await call.message.answer(f"Truck '{selected_truck}' selected. Proceeding to the next step.")
+    # Continue to the next state in the Assign Load workflow
+    await call.answer()
     await AssignLoad.load_number.set()
 
 # Handler for Load Number input

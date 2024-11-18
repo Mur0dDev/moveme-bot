@@ -3,6 +3,8 @@ import logging
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+from utils.utilities.search_utilities import search_company_name, search_driver_name, search_truck_number
+
 json_file_path = "C:\\Users\\user\\PycharmProjects\\moveme-bot\\autobot.json"
 home_json_file_path = "E:\\GitHub Projects\\moveme-bot\\autobot.json"
 
@@ -16,7 +18,7 @@ def setup_google_sheets():
     Sets up Google Sheets connection to the "User Credentials" sheet.
     """
     print("Setting up Google Sheets connection for User Credentials...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -31,7 +33,7 @@ def setup_group_credentials_sheet():
     Sets up Google Sheets connection to the "Group Credentials" sheet.
     """
     print("Setting up Google Sheets connection for Group Credentials...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -182,20 +184,46 @@ def get_full_name_by_user_id(user_id: int) -> str:
     return full_name
 
 
-# if __name__ == "__main__":
-#     # Step 1: Update the cache with the latest data
-#     update_cache()
-#
-#     # Step 2: Print the caches to verify data
-#     print("User Cache:", user_cache)
-#     print("Group Cache:", group_cache)
-#
-#     # Optional Step 3: Test retrieval functions with sample IDs
-#     test_telegram_id = 6697656102  # Replace with actual Telegram ID
-#     test_group_id = 987654321  # Replace with actual Group ID
-#
-#     user_full_name = get_user_full_name_by_telegram_id(test_telegram_id)
-#     print(f"User Full Name for Telegram ID {test_telegram_id}: {user_full_name}")
-#
-#     is_group_verified = check_group_verification(test_group_id)
-#     print(f"Is Group {test_group_id} Verified? {is_group_verified}")
+# Test Cases
+def test_search_company_name():
+    print("Testing Company Name Search:")
+    query = "Elm"
+    results = search_company_name(query, group_cache)
+    print(f"Search Query: {query}")
+    print(f"Results: {results}")
+
+def test_search_driver_name():
+    print("\nTesting Driver Name Search:")
+    query = "Farrukh Djuraev"
+    results = search_driver_name(query, user_cache)
+    print(f"Search Query: {query}")
+    print(f"Results: {results}")
+
+def test_search_truck_number():
+    print("\nTesting Truck Number Search:")
+    query = "40"
+    results = search_truck_number(query, user_cache)
+    print(f"Search Query: {query}")
+    print(f"Results: {results}")
+
+if __name__ == "__main__":
+    # Step 1: Update the cache with the latest data
+    update_cache()
+
+    test_search_company_name()
+    test_search_driver_name()
+    test_search_truck_number()
+
+    # Step 2: Print the caches to verify data
+    print("User Cache:", user_cache)
+    print("Group Cache:", group_cache)
+
+    # Optional Step 3: Test retrieval functions with sample IDs
+    test_telegram_id = 6697656102  # Replace with actual Telegram ID
+    test_group_id = 987654321  # Replace with actual Group ID
+
+    user_full_name = get_user_full_name_by_telegram_id(test_telegram_id)
+    print(f"User Full Name for Telegram ID {test_telegram_id}: {user_full_name}")
+
+    is_group_verified = check_group_verification(test_group_id)
+    print(f"Is Group {test_group_id} Verified? {is_group_verified}")
