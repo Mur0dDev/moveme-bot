@@ -6,14 +6,15 @@ from aiogram.dispatcher.filters.builtin import CommandStart, Text
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
 from states.dispatcher_reg_data import DispatchState, SafetyState, DriverState, AccountingState, DeniedState, UnverifiedState
-from sheet.google_sheets_integration import setup_google_sheets, get_user_role_by_telegram_id, get_full_name_by_user_id, group_cache, user_cache
+from sheet.google_sheets_integration import setup_google_sheets, get_user_role_by_telegram_id, get_full_name_by_user_id, \
+    group_cache, user_cache, update_cache, update_group_cache, search_truck_details
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
 from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options
 from states.assign_load_states import AssignLoad
 from utils.misc.validators import validate_full_name
-from utils.utilities.search_utilities import search_company_name, search_driver_name, search_truck_number
+#from utils.utilities.search_utilities import search_company_name, search_driver_name, search_truck_details
 from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location, validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
 
 
@@ -67,114 +68,151 @@ async def dispatcher_main(message: types.Message):
 @dp.callback_query_handler(text="🛠️ Load Assign", state=DispatchState.dispatch_main)
 async def handle_assign_load(call: types.CallbackQuery):
     await call.answer("Assign Load feature selected.")
-    await call.message.answer("Please search and select a Company Name:")
-    await AssignLoad.company_name.set()
-
-
-@dp.message_handler(state=AssignLoad.company_name)
-async def search_and_select_company_name(message: types.Message, state: FSMContext):
-    company_name = message.text
-
-    print(company_name)
-    print(group_cache)
-    print(search_company_name(company_name, group_cache))
-
-    # Pass the group_cache to the search function
-    matched_companies = search_company_name(company_name, group_cache)
-
-    if not matched_companies:
-        await message.answer(f"No matching companies found for '{company_name}'. Please try again.")
-        return
-
-    # Display options as inline buttons
-    company_buttons = InlineKeyboardMarkup(row_width=1)
-    for company in matched_companies:
-        company_buttons.add(InlineKeyboardButton(
-            text=company,
-            callback_data=f"select_company:{company}"
-        ))
-
-    await message.answer("Select a company:", reply_markup=company_buttons)
-
-
-@dp.callback_query_handler(Text(startswith="select_company"), state=AssignLoad.company_name)
-async def handle_company_selection(call: types.CallbackQuery, state: FSMContext):
-    _, selected_company = call.data.split(":")
-    await state.update_data(company_name=selected_company)
-
-    await call.message.answer(f"Company '{selected_company}' selected. Please search and select a Driver Name:")
-    await AssignLoad.driver_name.set()
-    await call.answer()
-
-
-@dp.message_handler(state=AssignLoad.driver_name)
-async def search_and_select_driver_name(message: types.Message, state: FSMContext):
-    driver_name = message.text
-
-    # Pass the user_cache to the search function
-    matched_drivers = search_driver_name(driver_name, user_cache)
-
-    if not matched_drivers:
-        await message.answer(f"No matching drivers found for '{driver_name}'. Please try again.")
-        return
-
-    # Display driver options
-    driver_buttons = InlineKeyboardMarkup(row_width=1)
-    for driver in matched_drivers:
-        driver_buttons.add(InlineKeyboardButton(
-            text=f"{driver['Full Name']} - Truck: {driver.get('Truck Number', 'N/A')}",
-            callback_data=f"select_driver:{driver['Telegram ID']}"
-        ))
-
-    await message.answer("Select a driver:", reply_markup=driver_buttons)
-
-
-@dp.callback_query_handler(Text(startswith="select_driver"), state=AssignLoad.driver_name)
-async def handle_driver_selection(call: types.CallbackQuery, state: FSMContext):
-    _, selected_driver_id = call.data.split(":")
-    driver_data = user_cache.get(selected_driver_id)
-
-    if not driver_data:
-        await call.answer("Driver not found. Please try again.", show_alert=True)
-        return
-
-    await state.update_data(driver_name=driver_data["Full Name"], truck_number=driver_data.get("Truck Number"))
-    await call.message.answer(f"Driver '{driver_data['Full Name']}' selected. Now, please search and select a Truck Number:")
+    await call.message.answer("Please enter truck number to search:")
     await AssignLoad.truck_number.set()
-    await call.answer()
 
+
+# @dp.message_handler(state=AssignLoad.company_name)
+# async def search_and_select_company_name(message: types.Message, state: FSMContext):
+#     company_name = message.text
+#
+#     print(company_name)
+#     print(group_cache)
+#     print(search_company_name(company_name, group_cache))
+#
+#     # Pass the group_cache to the search function
+#     matched_companies = search_company_name(company_name, group_cache)
+#
+#     if not matched_companies:
+#         await message.answer(f"No matching companies found for '{company_name}'. Please try again.")
+#         return
+#
+#     # Display options as inline buttons
+#     company_buttons = InlineKeyboardMarkup(row_width=1)
+#     for company in matched_companies:
+#         company_buttons.add(InlineKeyboardButton(
+#             text=company,
+#             callback_data=f"select_company:{company}"
+#         ))
+#
+#     await message.answer("Select a company:", reply_markup=company_buttons)
+#
+#
+# @dp.callback_query_handler(Text(startswith="select_company"), state=AssignLoad.company_name)
+# async def handle_company_selection(call: types.CallbackQuery, state: FSMContext):
+#     _, selected_company = call.data.split(":")
+#     await state.update_data(company_name=selected_company)
+#
+#     await call.message.answer(f"Company '{selected_company}' selected. Please search and select a Driver Name:")
+#     await AssignLoad.driver_name.set()
+#     await call.answer()
+#
+#
+# @dp.message_handler(state=AssignLoad.driver_name)
+# async def search_and_select_driver_name(message: types.Message, state: FSMContext):
+#     driver_name = message.text
+#
+#     # Pass the user_cache to the search function
+#     matched_drivers = search_driver_name(driver_name, user_cache)
+#
+#     if not matched_drivers:
+#         await message.answer(f"No matching drivers found for '{driver_name}'. Please try again.")
+#         return
+#
+#     # Display driver options
+#     driver_buttons = InlineKeyboardMarkup(row_width=1)
+#     for driver in matched_drivers:
+#         driver_buttons.add(InlineKeyboardButton(
+#             text=f"{driver['Full Name']} - Truck: {driver.get('Truck Number', 'N/A')}",
+#             callback_data=f"select_driver:{driver['Telegram ID']}"
+#         ))
+#
+#     await message.answer("Select a driver:", reply_markup=driver_buttons)
+#
+#
+# @dp.callback_query_handler(Text(startswith="select_driver"), state=AssignLoad.driver_name)
+# async def handle_driver_selection(call: types.CallbackQuery, state: FSMContext):
+#     _, selected_driver_id = call.data.split(":")
+#     driver_data = user_cache.get(selected_driver_id)
+#
+#     if not driver_data:
+#         await call.answer("Driver not found. Please try again.", show_alert=True)
+#         return
+#
+#     await state.update_data(driver_name=driver_data["Full Name"], truck_number=driver_data.get("Truck Number"))
+#     await call.message.answer(f"Driver '{driver_data['Full Name']}' selected. Now, please search and select a Truck Number:")
+#     await AssignLoad.truck_number.set()
+#     await call.answer()
+#
 
 @dp.message_handler(state=AssignLoad.truck_number)
 async def search_and_select_truck_number(message: types.Message, state: FSMContext):
     truck_number = message.text
 
-    # Pass the user_cache to the search function
-    matched_trucks = search_truck_number(truck_number, user_cache)
+    # Search for trucks
+    matched_trucks = search_truck_details(truck_number)
 
     if not matched_trucks:
         await message.answer(f"No matching trucks found for '{truck_number}'. Please try again.")
         return
 
-    # Display truck options
-    truck_buttons = InlineKeyboardMarkup(row_width=1)
-    for truck in matched_trucks:
-        truck_buttons.add(InlineKeyboardButton(
-            text=f"Truck: {truck['Truck Number']} - Driver: {truck['Full Name']}",
-            callback_data=f"select_truck:{truck['Truck Number']}"
+    # Create a numbered list of results
+    results_message = "**Search Results**\n\n"
+    for idx, truck in enumerate(matched_trucks, start=1):
+        results_message += (
+            f"{idx}. **Searched Truck Number:** {truck['Truck Number']}\n"
+            f"   **Company Name:** {truck['Company Name']}\n"
+            f"   **Driver Name:** {truck['Driver Name']}\n"
+            f"   **Group Name:** {truck['Group Name']}\n\n"
+        )
+
+    # Generate inline buttons for selecting a result
+    truck_buttons = InlineKeyboardMarkup(row_width=5)
+    for idx in range(1, len(matched_trucks) + 1):
+        truck_buttons.insert(InlineKeyboardButton(
+            text=str(idx),
+            callback_data=f"select_truck:{idx}"
         ))
 
-    await message.answer("Select a truck:", reply_markup=truck_buttons)
+    # Add cancel button
+    truck_buttons.add(InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_selection"))
 
+    await message.answer(results_message, reply_markup=truck_buttons)
 
-@dp.callback_query_handler(Text(startswith="select_truck"), state=AssignLoad.truck_number)
+# Handler for truck selection
+@dp.callback_query_handler(Text(startswith="select_truck:"), state=AssignLoad.truck_number)
 async def handle_truck_selection(call: types.CallbackQuery, state: FSMContext):
-    _, selected_truck = call.data.split(":")
-    await state.update_data(truck_number=selected_truck)
+    _, selected_index = call.data.split(":")
+    selected_index = int(selected_index) - 1  # Convert to zero-based index
 
-    await call.message.answer(f"Truck '{selected_truck}' selected. Proceeding to the next step.")
-    # Continue to the next state in the Assign Load workflow
-    await call.answer()
+    # Retrieve truck details from the matched list
+    matched_trucks = search_truck_details(await state.get_data("truck_number"))
+    if selected_index < 0 or selected_index >= len(matched_trucks):
+        await call.answer("Invalid selection. Please try again.", show_alert=True)
+        return
+
+    selected_truck = matched_trucks[selected_index]
+    await state.update_data(
+        truck_number=selected_truck['Truck Number'],
+        company_name=selected_truck['Company Name'],
+        driver_name=selected_truck['Driver Name'],
+        group_name=selected_truck['Group Name']
+    )
+
+    await call.message.answer(
+        f"Truck **{selected_truck['Truck Number']}** from company **{selected_truck['Company Name']}** with "
+        f"driver **{selected_truck['Driver Name']}** has been selected. Proceeding to the next step."
+    )
+    # Proceed to the next state here, if required.
     await AssignLoad.load_number.set()
+    await call.answer()
+
+@dp.callback_query_handler(Text(equals="cancel_selection"), state=AssignLoad.truck_number)
+async def cancel_truck_selection(call: types.CallbackQuery, state: FSMContext):
+    await call.message.answer("Truck selection has been canceled. Please enter the truck number again.")
+    await AssignLoad.truck_number.set()
+    await call.answer("Canceled.")
+
 
 # Handler for Load Number input
 @dp.message_handler(state=AssignLoad.load_number)
