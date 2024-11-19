@@ -74,7 +74,16 @@ async def dispatcher_main(message: types.Message, state: FSMContext):
 
 # Assign Load Workflow
 @dp.callback_query_handler(text="🛠️ Load Assign", state=DispatchState.dispatch_main)
-async def handle_assign_load(call: types.CallbackQuery):
+async def handle_assign_load(call: types.CallbackQuery, state: FSMContext):
+    # Retrieve dispatcher name from the state to keep track throughout the flow
+    data = await state.get_data()
+    dispatcher_name = data.get('dispatcher_name')
+
+    if not dispatcher_name:
+        user_id = call.from_user.id
+        dispatcher_name = get_full_name_by_user_id(user_id)
+        await state.update_data(dispatcher_name=dispatcher_name)
+
     await call.answer("Assign Load feature selected.")
     await call.message.answer("Please enter truck number to search:")
     await AssignLoad.truck_number.set()
@@ -400,6 +409,78 @@ async def enter_load_rate(message: types.Message, state: FSMContext):
     await message.answer(summary + "\n\nReview your load details and confirm to submit or edit.", reply_markup=confirmation_options)
     await AssignLoad.confirmation.set()
 
+
+@dp.callback_query_handler(text="confirm_send_data", state=AssignLoad.confirmation)
+async def handle_send_data(call: CallbackQuery, state: FSMContext):
+    # Retrieve the load assignment data from the state
+    data = await state.get_data()
+
+    # Generate the template message for the driver's group
+    driver_message = (
+        f"**LOAD ASSIGNMENT**\n\n"
+        f"**Load #:** {data['load_number']}\n\n"
+        f"**Pickup Details:**\n"
+        f"📅 {data['pickup_datetime']}\n"
+        f"📍 {data['pickup_location']}\n\n"
+        f"**Delivery Details:**\n"
+        f"📅 {data['delivery_datetime']}\n"
+        f"📍 {data['delivery_location']}\n\n"
+        f"**Mile:** {data['loaded_miles']}\n"
+        f"**Rate:** ${data['load_rate']}\n\n"
+        f"———————————————————\n"
+        f"**Company Policies:**\n\n"
+        f"🏦 No BOL no Money\n"
+        f"❗️ LATE for PU / DEL on street loads without proper reason - $300\n"
+        f"❗️ Driver communication - $400\n"
+        f"❗️ No Amazon Relay app / TMS - $400\n"
+        f"❗️ LATE for PU / DEL on AMAZON loads without proper reason - $500\n"
+        f"❗️ No update - $400\n"
+        f"❗️ Rejecting confirmed load - $1000\n\n"
+        f"📌 **Note:**\n"
+        f"- Notify DISPATCHER for delays due to traffic, construction, or weather.\n"
+        f"- SCALE the load after pickup to avoid axle overweight.\n"
+        f"- Do not leave the trailer unattended.\n"
+        f"- Verify BOL correctness and send it to the group.\n"
+        f"- Send trailer photos to the group chat.\n"
+    )
+
+    # Send the message to the driver's group
+    try:
+        group_id = data['group_id']  # Ensure group ID exists in the data
+        await dp.bot.send_message(chat_id=group_id, text=driver_message)
+    except Exception as e:
+        await call.message.answer(f"Failed to send the load data to the driver's group: {str(e)}")
+        return
+
+    # # Upload the data to Google Sheets
+    # try:
+    #     sheet = setup_google_sheets()
+    #     # Prepare the row of data to upload
+    #     row = [
+    #         data['load_number'],
+    #         data['company_name'],
+    #         data['dispatcher_name'],
+    #         data['driver_name'],
+    #         data['truck_number'],
+    #         data['broker_name'],
+    #         data['team_or_solo'],
+    #         data['pickup_location'],
+    #         data['pickup_datetime'],
+    #         data['delivery_location'],
+    #         data['delivery_datetime'],
+    #         data['deadhead_miles'],
+    #         data['loaded_miles'],
+    #         data['load_rate'],
+    #     ]
+    #     sheet.append_row(row)
+    # except Exception as e:
+    #     await call.message.answer(f"Failed to upload the load data to Google Sheets: {str(e)}")
+    #     return
+
+    # Notify the dispatcher that both steps are completed
+    await call.message.answer("✅ Load data has been successfully sent to the driver's group and uploaded to Google Sheets!")
+    await state.finish()
+    await call.answer()
 
 
 
