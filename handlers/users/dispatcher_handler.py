@@ -1,4 +1,5 @@
 # Imports
+import logging
 from aiogram import types
 from loader import dp
 from filters import IsPrivate
@@ -7,7 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from aiogram.dispatcher import FSMContext
 from states.dispatcher_reg_data import DispatchState, SafetyState, DriverState, AccountingState, DeniedState, UnverifiedState
 from sheet.google_sheets_integration import setup_google_sheets, get_user_role_by_telegram_id, get_full_name_by_user_id, \
-    group_cache, user_cache, update_cache, update_group_cache, search_truck_details
+    group_cache, user_cache, update_cache, update_group_cache, search_truck_details, update_google_sheet
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
@@ -411,76 +412,81 @@ async def enter_load_rate(message: types.Message, state: FSMContext):
 
 
 @dp.callback_query_handler(text="confirm_send_data", state=AssignLoad.confirmation)
-async def handle_send_data(call: CallbackQuery, state: FSMContext):
-    # Retrieve the load assignment data from the state
-    data = await state.get_data()
-
-    # Generate the template message for the driver's group
-    driver_message = (
-        f"**LOAD ASSIGNMENT**\n\n"
-        f"**Load #:** {data['load_number']}\n\n"
-        f"**Pickup Details:**\n"
-        f"📅 {data['pickup_datetime']}\n"
-        f"📍 {data['pickup_location']}\n\n"
-        f"**Delivery Details:**\n"
-        f"📅 {data['delivery_datetime']}\n"
-        f"📍 {data['delivery_location']}\n\n"
-        f"**Mile:** {data['loaded_miles']}\n"
-        f"**Rate:** ${data['load_rate']}\n\n"
-        f"———————————————————\n"
-        f"**Company Policies:**\n\n"
-        f"🏦 No BOL no Money\n"
-        f"❗️ LATE for PU / DEL on street loads without proper reason - $300\n"
-        f"❗️ Driver communication - $400\n"
-        f"❗️ No Amazon Relay app / TMS - $400\n"
-        f"❗️ LATE for PU / DEL on AMAZON loads without proper reason - $500\n"
-        f"❗️ No update - $400\n"
-        f"❗️ Rejecting confirmed load - $1000\n\n"
-        f"📌 **Note:**\n"
-        f"- Notify DISPATCHER for delays due to traffic, construction, or weather.\n"
-        f"- SCALE the load after pickup to avoid axle overweight.\n"
-        f"- Do not leave the trailer unattended.\n"
-        f"- Verify BOL correctness and send it to the group.\n"
-        f"- Send trailer photos to the group chat.\n"
-    )
-
-    # Send the message to the driver's group
+async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
     try:
-        group_id = data['group_id']  # Ensure group ID exists in the data
-        await dp.bot.send_message(chat_id=group_id, text=driver_message)
+        # Retrieve load assignment data from FSMContext
+        data = await state.get_data()
+
+        formatted_rate = "${:,.2f}".format(data.get('load_rate', 0))  # Format rate with commas and two decimals
+        load_assignment_message = (
+            f"🚚 **Load Details**\n"
+            f"🆔 **Load Number**: {data.get('load_number')}\n"
+            f"💼 **Broker Name**: {data.get('broker_name')}\n"
+            f"👥 **Load Type**: {data.get('team_or_solo')}\n\n"
+            f"📅 **Pickup**: {data.get('pickup_datetime')}\n"
+            f"📍 **Location**:\n{data.get('pickup_location')}\n\n"
+            f"📅 **Delivery**: {data.get('delivery_datetime')}\n"
+            f"📍 **Location**:\n{data.get('delivery_location')}\n\n"
+            f"📏 **Total Miles**: {data.get('loaded_miles')}\n"
+            f"💵 **Rate**: {formatted_rate}\n\n"
+            f"📜 **Company's Policy**\n"
+            f"🏦 **Payment Policy**:\nNo BOL, No Money\n\n"
+            f"⛔ **Penalties**:\n\n"
+            f"- Late for PU / DEL on street loads (without reason): **$300**\n"
+            f"- Driver communication issues: **$400**\n"
+            f"- No Amazon Relay app / TMS: **$400**\n"
+            f"- Late for PU / DEL on Amazon loads (without reason): **$500**\n"
+            f"- No update: **$400**\n"
+            f"- Rejecting confirmed load: **$1000**\n\n"
+            f"🔔 **Important Notes**:\n\n"
+            f"- **Traffic/Construction/Weather**: Always tag DISPATCHERS for updates.\n"
+            f"- **Scale the load** after pickup to avoid axle overweight issues.\n"
+            f"- **Never leave the loaded trailer unattended.**\n"
+            f"- Verify the **BOL correctness** and upload using **CamScan**.\n"
+            f"- **Send trailer photos** to the group chat immediately.\n"
+        )
+
+        # Send message to the driver's group
+        group_id = int(data['group_id'])
+        await call.bot.send_message(chat_id=group_id, text=load_assignment_message)
+
+        # Upload data to Google Sheets
+        sheet_data = [
+            data["load_number"],
+            data["company_name"],
+            data["dispatcher_name"],
+            data["driver_name"],
+            data["truck_number"],
+            data["broker_name"],
+            data["team_or_solo"],
+            data["pickup_location"],
+            data["pickup_datetime"],
+            data["delivery_location"],
+            data["delivery_datetime"],
+            data["deadhead_miles"],
+            data["loaded_miles"],
+            data["load_rate"],
+        ]
+        await update_google_sheet(sheet_data)
+
+        # Notify dispatcher of success
+        await call.message.answer("✅ Load assignment data successfully sent to the driver's group and uploaded to Google Sheets.")
+
+        # Finish the FSM state
+        if state:
+            await state.finish()
+
+    except KeyError as e:
+        logging.error(f"KeyError: {e}. Missing data in FSM context.")
+        await call.message.answer("❌ Error: Missing required data. Please try again.")
+
     except Exception as e:
-        await call.message.answer(f"Failed to send the load data to the driver's group: {str(e)}")
-        return
+        logging.exception(f"Unexpected error: {e}")
+        await call.message.answer("❌ Error: Failed to process load assignment. Please contact support.")
 
-    # # Upload the data to Google Sheets
-    # try:
-    #     sheet = setup_google_sheets()
-    #     # Prepare the row of data to upload
-    #     row = [
-    #         data['load_number'],
-    #         data['company_name'],
-    #         data['dispatcher_name'],
-    #         data['driver_name'],
-    #         data['truck_number'],
-    #         data['broker_name'],
-    #         data['team_or_solo'],
-    #         data['pickup_location'],
-    #         data['pickup_datetime'],
-    #         data['delivery_location'],
-    #         data['delivery_datetime'],
-    #         data['deadhead_miles'],
-    #         data['loaded_miles'],
-    #         data['load_rate'],
-    #     ]
-    #     sheet.append_row(row)
-    # except Exception as e:
-    #     await call.message.answer(f"Failed to upload the load data to Google Sheets: {str(e)}")
-    #     return
-
-    # Notify the dispatcher that both steps are completed
-    await call.message.answer("✅ Load data has been successfully sent to the driver's group and uploaded to Google Sheets!")
-    await state.finish()
-    await call.answer()
+    finally:
+        # Acknowledge callback
+        await call.answer()
 
 
 

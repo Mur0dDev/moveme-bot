@@ -49,13 +49,29 @@ def update_user_cache():
     """
     print("Updating user cache...")
     sheet = setup_google_sheets()
-    records = sheet.get_all_records()
-    print(f"Fetched {len(records)} records from User Credentials sheet.")
+    try:
+        # Log headers for debugging
+        headers = sheet.row_values(1)  # Retrieve the header row
+        print(f"Headers in User Credentials sheet: {headers}")
 
-    # Update the cache with user data, using Telegram ID as the key
-    global user_cache
-    user_cache = {str(record["Telegram ID"]): record for record in records}
-    print("User cache updated.")
+        # Ensure headers are unique
+        unique_headers = list(dict.fromkeys(headers))  # Remove duplicates while preserving order
+        if len(unique_headers) != len(headers):
+            print(f"Duplicate headers detected! Using unique headers: {unique_headers}")
+
+        # Fetch all records using sanitized headers
+        records = sheet.get_all_records(expected_headers=unique_headers)
+        print(f"Fetched {len(records)} records from User Credentials sheet.")
+
+        # Update the cache with user data, using Telegram ID as the key
+        global user_cache
+        user_cache = {str(record["Telegram ID"]): record for record in records}
+        print("User cache updated.")
+
+    except Exception as e:
+        print(f"Error fetching records: {e}")
+        logging.exception("Failed to update user cache due to header issue.")
+
 
 # Function to update the group cache
 def update_group_cache():
@@ -180,6 +196,18 @@ def add_group_to_google_sheet(group_data):
         print("Group data successfully written to Google Sheets.")
     except Exception as e:
         logging.exception(f"Error writing to Google Sheets: {e}")
+        raise
+
+async def update_google_sheet(sheet_data):
+    """
+    Appends load assignment data to the Google Sheet.
+    """
+    try:
+        sheet = setup_google_sheets()
+        sheet.append_row(sheet_data)
+        logging.info("Data successfully uploaded to Google Sheets.")
+    except Exception as e:
+        logging.exception("Failed to update Google Sheets.")
         raise
 
 
