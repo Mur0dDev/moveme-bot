@@ -14,7 +14,6 @@ from data.texts import get_random_message, welcome_messages
 from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options
 from states.assign_load_states import AssignLoad
 from utils.misc.validators import validate_full_name
-#from utils.utilities.search_utilities import search_company_name, search_driver_name, search_truck_details
 from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location, validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
 
 
@@ -56,10 +55,19 @@ async def verify_user_role(message: types.Message):
 
 
 @dp.message_handler(IsPrivate(), CommandStart(), state=DispatchState.dispatch_main)
-async def dispatcher_main(message: types.Message):
-    """Main menu for dispatcher-specific features."""
+async def dispatcher_main(message: types.Message, state: FSMContext):
+    """
+    Main menu for dispatcher-specific features.
+    """
+    # Get the user's Telegram ID
     user_id = message.from_user.id
+
+    # Retrieve the full name from Google Sheets based on user_id
     full_name = get_full_name_by_user_id(user_id)
+
+    # Save the dispatcher name in FSM state
+    await state.update_data(dispatcher_name=full_name)
+
     await message.delete()
     await message.answer(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
 
@@ -72,79 +80,6 @@ async def handle_assign_load(call: types.CallbackQuery):
     await AssignLoad.truck_number.set()
 
 
-# @dp.message_handler(state=AssignLoad.company_name)
-# async def search_and_select_company_name(message: types.Message, state: FSMContext):
-#     company_name = message.text
-#
-#     print(company_name)
-#     print(group_cache)
-#     print(search_company_name(company_name, group_cache))
-#
-#     # Pass the group_cache to the search function
-#     matched_companies = search_company_name(company_name, group_cache)
-#
-#     if not matched_companies:
-#         await message.answer(f"No matching companies found for '{company_name}'. Please try again.")
-#         return
-#
-#     # Display options as inline buttons
-#     company_buttons = InlineKeyboardMarkup(row_width=1)
-#     for company in matched_companies:
-#         company_buttons.add(InlineKeyboardButton(
-#             text=company,
-#             callback_data=f"select_company:{company}"
-#         ))
-#
-#     await message.answer("Select a company:", reply_markup=company_buttons)
-#
-#
-# @dp.callback_query_handler(Text(startswith="select_company"), state=AssignLoad.company_name)
-# async def handle_company_selection(call: types.CallbackQuery, state: FSMContext):
-#     _, selected_company = call.data.split(":")
-#     await state.update_data(company_name=selected_company)
-#
-#     await call.message.answer(f"Company '{selected_company}' selected. Please search and select a Driver Name:")
-#     await AssignLoad.driver_name.set()
-#     await call.answer()
-#
-#
-# @dp.message_handler(state=AssignLoad.driver_name)
-# async def search_and_select_driver_name(message: types.Message, state: FSMContext):
-#     driver_name = message.text
-#
-#     # Pass the user_cache to the search function
-#     matched_drivers = search_driver_name(driver_name, user_cache)
-#
-#     if not matched_drivers:
-#         await message.answer(f"No matching drivers found for '{driver_name}'. Please try again.")
-#         return
-#
-#     # Display driver options
-#     driver_buttons = InlineKeyboardMarkup(row_width=1)
-#     for driver in matched_drivers:
-#         driver_buttons.add(InlineKeyboardButton(
-#             text=f"{driver['Full Name']} - Truck: {driver.get('Truck Number', 'N/A')}",
-#             callback_data=f"select_driver:{driver['Telegram ID']}"
-#         ))
-#
-#     await message.answer("Select a driver:", reply_markup=driver_buttons)
-#
-#
-# @dp.callback_query_handler(Text(startswith="select_driver"), state=AssignLoad.driver_name)
-# async def handle_driver_selection(call: types.CallbackQuery, state: FSMContext):
-#     _, selected_driver_id = call.data.split(":")
-#     driver_data = user_cache.get(selected_driver_id)
-#
-#     if not driver_data:
-#         await call.answer("Driver not found. Please try again.", show_alert=True)
-#         return
-#
-#     await state.update_data(driver_name=driver_data["Full Name"], truck_number=driver_data.get("Truck Number"))
-#     await call.message.answer(f"Driver '{driver_data['Full Name']}' selected. Now, please search and select a Truck Number:")
-#     await AssignLoad.truck_number.set()
-#     await call.answer()
-#
-
 @dp.message_handler(state=AssignLoad.truck_number)
 async def search_and_select_truck_number(message: types.Message, state: FSMContext):
     truck_number = message.text
@@ -155,6 +90,9 @@ async def search_and_select_truck_number(message: types.Message, state: FSMConte
     if not matched_trucks:
         await message.answer(f"No matching trucks found for '{truck_number}'. Please try again.")
         return
+
+    # Save matched trucks and the original truck number to FSMContext
+    await state.update_data(matched_trucks=matched_trucks, searched_truck_number=truck_number)
 
     # Create a numbered list of results
     results_message = "**Search Results**\n\n"
@@ -179,37 +117,44 @@ async def search_and_select_truck_number(message: types.Message, state: FSMConte
 
     await message.answer(results_message, reply_markup=truck_buttons)
 
-# Handler for truck selection
+
 @dp.callback_query_handler(Text(startswith="select_truck:"), state=AssignLoad.truck_number)
 async def handle_truck_selection(call: types.CallbackQuery, state: FSMContext):
     _, selected_index = call.data.split(":")
     selected_index = int(selected_index) - 1  # Convert to zero-based index
 
-    # Retrieve truck details from the matched list
-    matched_trucks = search_truck_details(await state.get_data("truck_number"))
-    if selected_index < 0 or selected_index >= len(matched_trucks):
+    # Retrieve matched trucks from FSMContext
+    data = await state.get_data()
+    matched_trucks = data.get("matched_trucks")
+
+    if not matched_trucks or selected_index < 0 or selected_index >= len(matched_trucks):
         await call.answer("Invalid selection. Please try again.", show_alert=True)
         return
 
     selected_truck = matched_trucks[selected_index]
+
+    # Update FSM state with selected truck details
     await state.update_data(
         truck_number=selected_truck['Truck Number'],
         company_name=selected_truck['Company Name'],
         driver_name=selected_truck['Driver Name'],
-        group_name=selected_truck['Group Name']
+        group_name=selected_truck['Group Name'],
+        group_id=selected_truck.get('Group ID')  #Ensure Group ID is included
     )
 
     await call.message.answer(
         f"Truck **{selected_truck['Truck Number']}** from company **{selected_truck['Company Name']}** with "
         f"driver **{selected_truck['Driver Name']}** has been selected. Proceeding to the next step."
+        f"Please enter load number:"
     )
-    # Proceed to the next state here, if required.
-    await AssignLoad.load_number.set()
+    await AssignLoad.load_number.set()  # Move to the next step
     await call.answer()
+
 
 @dp.callback_query_handler(Text(equals="cancel_selection"), state=AssignLoad.truck_number)
 async def cancel_truck_selection(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer("Truck selection has been canceled. Please enter the truck number again.")
+    await call.message.delete()
     await AssignLoad.truck_number.set()
     await call.answer("Canceled.")
 
@@ -434,6 +379,10 @@ async def enter_load_rate(message: types.Message, state: FSMContext):
     # Format the summary of load details
     summary = (
         f"**Load Assignment Summary**\n"
+        f"Company Name: {data['company_name']}\n"
+        f"Group Name: {data['group_name']}\n"
+        f"Group ID: {data['group_id']}\n"
+        f"Dispatcher Name: {data['dispatcher_name']}\n"
         f"Driver Name: {data.get('driver_name')}\n"
         f"Truck Number: {data.get('truck_number')}\n"
         f"Load Number: {data.get('load_number')}\n"

@@ -69,15 +69,26 @@ def update_group_cache():
 
     # Update the cache with group data, using Group ID as the key
     global group_cache
-    group_cache = {
-        str(record["Group ID"]): {
-            "Company Name": record["Company Name"],
-            "Group Name": record["Group Name"],
-            "Truck Number": record["Truck Number"],
-            "Driver Name": record["Driver Name"]
-        } for record in records
-    }
-    print("Group cache updated.")
+    group_cache = {}
+
+    for record in records:
+        # Ensure all required fields exist in the record
+        try:
+            group_id = str(record["Group ID"])
+            group_cache[group_id] = {
+                "Company Name": record.get("Company Name"),
+                "Group Name": record.get("Group Name"),
+                "Group Type": record.get("Group Type"),
+                "Truck Number": record.get("Truck Number"),
+                "Driver Name": record.get("Driver Name"),
+                "Group ID": record.get("Group ID"),  # Explicitly include Group ID
+            }
+        except KeyError as e:
+            print(f"Error processing record {record}: Missing key {e}")
+            continue
+
+    print("Group cache updated:", group_cache)
+
 
 # Function to clear cache and update both user and group caches
 def update_cache():
@@ -204,7 +215,8 @@ def search_truck_details(truck_number: str) -> list:
             "Truck Number": value["Truck Number"],
             "Company Name": value["Company Name"],
             "Driver Name": value["Driver Name"],
-            "Group Name": value["Group Name"]
+            "Group Name": value["Group Name"],
+            "Group ID": value["Group ID"],
         }
         for value in group_cache.values()
     ]
