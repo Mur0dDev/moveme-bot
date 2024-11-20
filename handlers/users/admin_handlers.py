@@ -42,8 +42,12 @@ async def update_cache_command(message: types.Message, state: FSMContext):
         logging.exception(f"Error updating cache: {e}")
         await message.answer("Failed to update the cache. Please check the logs.")
 
-    # Finish the state
-    await state.finish()
+    # Safely finish the state
+    try:
+        await state.finish()
+    except KeyError:
+        logging.warning(f"FSM state for user {message.from_user.id} was not found or already cleared.")
+
 
 
 # Request Admin Approval

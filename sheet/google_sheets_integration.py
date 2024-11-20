@@ -42,6 +42,40 @@ def setup_group_credentials_sheet():
     print("Group Credentials sheet connected.")
     return group_credentials
 
+
+# Function to set up Google Sheets credentials for Load Management sheet
+def setup_load_management_sheet():
+    """
+    Sets up Google Sheets connection to the "Load Management" sheet.
+    """
+    print("Setting up Google Sheets connection for Load Management...")
+    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ])
+    client = gspread.authorize(creds)
+    load_management_sheet = client.open("Load Management").worksheet("Gross Sheet")
+    print("Load Management sheet connected.")
+    return load_management_sheet
+
+
+# Function to append load assignment data to Load Management sheet
+def append_load_assignment_data(sheet_data):
+    """
+    Appends load assignment data to the 'Load Management' sheet.
+
+    Args:
+        sheet_data (list): A list containing load assignment data to be appended.
+    """
+    try:
+        sheet = setup_load_management_sheet()
+        sheet.append_row(sheet_data)
+        print("Load assignment data successfully written to Google Sheets.")
+    except Exception as e:
+        logging.exception("Error while writing load assignment data to Google Sheets.")
+        raise
+
+
 # Function to update the user cache
 def update_user_cache():
     """

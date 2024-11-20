@@ -8,7 +8,8 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from aiogram.dispatcher import FSMContext
 from states.dispatcher_reg_data import DispatchState, SafetyState, DriverState, AccountingState, DeniedState, UnverifiedState
 from sheet.google_sheets_integration import setup_google_sheets, get_user_role_by_telegram_id, get_full_name_by_user_id, \
-    group_cache, user_cache, update_cache, update_group_cache, search_truck_details, update_google_sheet
+    group_cache, user_cache, update_cache, update_group_cache, search_truck_details, update_google_sheet, \
+    append_load_assignment_data
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
@@ -467,10 +468,13 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
             data["loaded_miles"],
             data["load_rate"],
         ]
-        await update_google_sheet(sheet_data)
-
-        # Notify dispatcher of success
-        await call.message.answer("✅ Load assignment data successfully sent to the driver's group and uploaded to Google Sheets.")
+        # Append data to Google Sheets
+        try:
+            append_load_assignment_data(sheet_data)
+            await call.message.answer(
+                "✅ Load assignment data has been sent to the driver's group and saved to Google Sheets!")
+        except Exception as e:
+            await call.message.answer(f"⚠️ An error occurred while saving to Google Sheets: {e}")
 
         # Finish the FSM state
         if state:
