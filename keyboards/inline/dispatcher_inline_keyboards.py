@@ -59,3 +59,12 @@ confirmation_options.add(
 )
 
 
+# Inline keyboard with Back and Close buttons
+navigation_options = InlineKeyboardMarkup(row_width=2)
+navigation_options.add(
+    InlineKeyboardButton(text="⬅️ Back", callback_data="go_back"),
+    InlineKeyboardButton(text="❌ Close", callback_data="close_load_assignment")
+)
+
+
+

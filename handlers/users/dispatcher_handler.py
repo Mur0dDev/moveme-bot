@@ -13,7 +13,7 @@ from sheet.google_sheets_integration import setup_google_sheets, get_user_role_b
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
-from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options
+from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options, navigation_options
 from states.assign_load_states import AssignLoad
 from utils.misc.validators import validate_full_name
 from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location, validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
@@ -86,8 +86,9 @@ async def handle_assign_load(call: types.CallbackQuery, state: FSMContext):
         dispatcher_name = get_full_name_by_user_id(user_id)
         await state.update_data(dispatcher_name=dispatcher_name)
 
-    await call.answer("Assign Load feature selected.")
-    await call.message.answer("Please enter truck number to search:")
+    await call.message.edit_text("🛠️ Load Assignment Selected: Ready to assign a new load! Let's begin.\n\n"
+                              "🚛 Step 1: Please provide the Truck Number to search for available trucks.", reply_markup=navigation_options)
+
     await AssignLoad.truck_number.set()
 
 
@@ -99,20 +100,21 @@ async def search_and_select_truck_number(message: types.Message, state: FSMConte
     matched_trucks = search_truck_details(truck_number)
 
     if not matched_trucks:
-        await message.answer(f"No matching trucks found for '{truck_number}'. Please try again.")
+        await message.answer(f"❌ No Matches Found:\n\nWe couldn’t find any trucks matching '{truck_number}'. Please double-check and try again.", reply_markup=navigation_options)
         return
 
     # Save matched trucks and the original truck number to FSMContext
     await state.update_data(matched_trucks=matched_trucks, searched_truck_number=truck_number)
 
     # Create a numbered list of results
-    results_message = "**Search Results**\n\n"
+    results_message = "🔎 Search Results:\nHere are the trucks matching your query:\n\n"
     for idx, truck in enumerate(matched_trucks, start=1):
         results_message += (
-            f"{idx}. **Searched Truck Number:** {truck['Truck Number']}\n"
-            f"   **Company Name:** {truck['Company Name']}\n"
-            f"   **Driver Name:** {truck['Driver Name']}\n"
-            f"   **Group Name:** {truck['Group Name']}\n\n"
+            f"🔎 Search Result  {idx}:\n"
+            f"🚛 Truck Number:  {truck['Truck Number']}\n"
+            f"🏢 Company Name:  {truck['Company Name']}\n"
+            f"👨‍✈️ Driver Name:  {truck['Driver Name']}\n"
+            f"👥 Group Name:  {truck['Group Name']}\n\n"
         )
 
     # Generate inline buttons for selecting a result
@@ -491,6 +493,65 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
     finally:
         # Acknowledge callback
         await call.answer()
+
+
+@dp.callback_query_handler(text="go_back", state="*")
+async def go_back_handler(call: types.CallbackQuery, state: FSMContext):
+    """
+    Handles the Back button, moving the user to the previous FSM state from any active state.
+    """
+    # Get the current state
+    current_state = await state.get_state()
+    logging.info(f"Current State: {current_state}")
+
+    # Define the state transition order
+    state_order = [
+        DispatchState.dispatch_main.state,
+        AssignLoad.truck_number.state,
+        AssignLoad.load_number.state,
+        AssignLoad.broker_name.state,
+        AssignLoad.team_or_solo.state,
+        AssignLoad.pickup_location.state,
+        AssignLoad.pickup_datetime.state,
+        AssignLoad.delivery_location.state,
+        AssignLoad.delivery_datetime.state,
+        AssignLoad.loaded_miles.state,
+        AssignLoad.deadhead_miles.state,
+        AssignLoad.load_rate.state,
+        AssignLoad.confirmation.state,
+    ]
+
+    # Handle missing current state
+    if not current_state:
+        await call.message.answer("⚠️ No active step to go back from.", reply_markup=navigation_options)
+        return
+
+    # Determine the previous state
+    if current_state in state_order:
+        current_index = state_order.index(current_state)
+        logging.info(f"Current Index: {current_index}")
+        if current_index > 0:
+            previous_state = state_order[current_index - 1]
+            await state.set_state(previous_state)
+            await call.message.answer("⬅️ Returning to the previous step.", reply_markup=navigation_options)
+        else:
+            await call.message.answer("🔙 You are already at the first step.", reply_markup=navigation_options)
+    else:
+        await call.message.answer("⚠️ Cannot determine the previous state.", reply_markup=navigation_options)
+
+    await call.answer()
+
+
+
+@dp.callback_query_handler(text="close_load_assignment", state="*")
+async def close_load_assignment_handler(call: types.CallbackQuery, state: FSMContext):
+    """
+    Handles the Close button, ending the load assignment process and returning to the main page.
+    """
+    await state.finish()  # Clear FSM context
+    full_name = get_full_name_by_user_id(call.from_user.id)
+    await call.message.answer(f"✅ Load assignment process canceled. Returning to the main menu, {full_name}.", reply_markup=dispatcher_main_features)
+    await call.answer("✅ Load assignment closed.")
 
 
 
