@@ -7,16 +7,13 @@ from aiogram.dispatcher.filters.builtin import CommandStart, Text
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
 from states.dispatcher_reg_data import DispatchState, SafetyState, DriverState, AccountingState, DeniedState, UnverifiedState
-from sheet.google_sheets_integration import setup_google_sheets, get_user_role_by_telegram_id, get_full_name_by_user_id, \
-    group_cache, user_cache, update_cache, update_group_cache, search_truck_details, update_google_sheet, \
-    append_load_assignment_data
+from sheet.google_sheets_integration import get_user_role_by_telegram_id, get_full_name_by_user_id, search_truck_details, append_load_assignment_data
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
-from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options, navigation_options
+from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options
 from states.assign_load_states import AssignLoad
-from utils.misc.validators import validate_full_name
-from utils.misc.load_assignment_validations import validate_truck_number, validate_load_number, validate_broker_name, validate_location, validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
+from utils.misc.load_assignment_validations import validate_load_number, validate_broker_name, validate_location, validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
 
 
 @dp.message_handler(IsPrivate(), commands=['start', 'help'])
@@ -86,8 +83,8 @@ async def handle_assign_load(call: types.CallbackQuery, state: FSMContext):
         dispatcher_name = get_full_name_by_user_id(user_id)
         await state.update_data(dispatcher_name=dispatcher_name)
 
-    await call.message.edit_text("🛠️ Load Assignment Selected: Ready to assign a new load! Let's begin.\n\n"
-                              "🚛 Step 1: Please provide the Truck Number to search for available trucks.", reply_markup=navigation_options)
+    await call.message.edit_text("🛠️ Load Assignment:\nReady to assign a new load! Let's begin.\n\n"
+                              "🚛 Step 1: Please provide the Truck Number to search for available trucks.")
 
     await AssignLoad.truck_number.set()
 
@@ -100,7 +97,7 @@ async def search_and_select_truck_number(message: types.Message, state: FSMConte
     matched_trucks = search_truck_details(truck_number)
 
     if not matched_trucks:
-        await message.answer(f"❌ No Matches Found:\n\nWe couldn’t find any trucks matching '{truck_number}'. Please double-check and try again.", reply_markup=navigation_options)
+        await message.answer(f"❌ No Matches Found:\n\nWe couldn’t find any trucks matching '{truck_number}'. Please double-check and try again.")
         return
 
     # Save matched trucks and the original truck number to FSMContext
@@ -141,7 +138,7 @@ async def handle_truck_selection(call: types.CallbackQuery, state: FSMContext):
     matched_trucks = data.get("matched_trucks")
 
     if not matched_trucks or selected_index < 0 or selected_index >= len(matched_trucks):
-        await call.answer("Invalid selection. Please try again.", show_alert=True)
+        await call.answer("🚫 Hmm, that doesn’t look like a valid choice. No worries, give it another shot!", show_alert=True)
         return
 
     selected_truck = matched_trucks[selected_index]
@@ -155,10 +152,14 @@ async def handle_truck_selection(call: types.CallbackQuery, state: FSMContext):
         group_id=selected_truck.get('Group ID')  #Ensure Group ID is included
     )
 
-    await call.message.answer(
-        f"Truck **{selected_truck['Truck Number']}** from company **{selected_truck['Company Name']}** with "
-        f"driver **{selected_truck['Driver Name']}** has been selected. Proceeding to the next step."
-        f"Please enter load number:"
+    await call.message.edit_text(
+        f"🚛 Truck Selection Successful!\n\n"
+        f"Here are the details of your selected truck:\n"
+        f"🚛 Truck Number: {selected_truck['Truck Number']}\n"
+        f"🏢 Company Name: {selected_truck['Company Name']}\n"
+        f"👨‍✈️ Driver Name: {selected_truck['Driver Name']}\n\n"
+        f"🎯 Great choice! Now, let’s move forward.\n"
+        f"📋 Please provide the load number."
     )
     await AssignLoad.load_number.set()  # Move to the next step
     await call.answer()
@@ -166,10 +167,11 @@ async def handle_truck_selection(call: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query_handler(Text(equals="cancel_selection"), state=AssignLoad.truck_number)
 async def cancel_truck_selection(call: types.CallbackQuery, state: FSMContext):
-    await call.message.answer("Truck selection has been canceled. Please enter the truck number again.")
-    await call.message.delete()
-    await AssignLoad.truck_number.set()
-    await call.answer("Canceled.")
+    await call.message.answer(f"🚫 Truck Selection Canceled!\n\n"
+                              f"No worries, you can start fresh now.\n"
+                              f"🔄 Simply type /start to begin again.")
+    await DispatchState.dispatch_main.set()
+    await call.answer()
 
 
 # Handler for Load Number input
@@ -177,10 +179,14 @@ async def cancel_truck_selection(call: types.CallbackQuery, state: FSMContext):
 async def enter_load_number(message: types.Message, state: FSMContext):
     load_number = message.text
     if not validate_load_number(load_number):
-        await message.answer("Invalid load number format. Please enter a valid Load Number (only letters and numbers, no symbols).")
+        await message.answer(f"❌ Invalid Load Number Format.\n\n"
+                             f"The load number should contain only letters and numbers, without any symbols.\n\n"
+                             f"🔄 Please re-enter the load number.")
         return
     await state.update_data(load_number=load_number)
-    await message.answer("Please enter the Broker Name:")
+    await message.answer(f"📋 What's the Broker's Name?\n\n"
+                         f"Enter the name of the broker managing this load.\n\n"
+                         f"✅ Use only letters and spaces to ensure accuracy.")
     await AssignLoad.broker_name.set()
 
 # Handler for Broker Name input with validation
@@ -188,17 +194,28 @@ async def enter_load_number(message: types.Message, state: FSMContext):
 async def enter_broker_name(message: types.Message, state: FSMContext):
     broker_name = message.text
     if not validate_broker_name(broker_name):
-        await message.answer("Invalid broker name format. Please enter a valid Broker Name (only letters and spaces, no numbers or symbols).")
+        await message.answer(f"📛 Oops, That's Not Right!\n\n"
+                             f"The broker name should only include letters and spaces.\n\n"
+                             f"Please double-check and try again.")
         return
     await state.update_data(broker_name=broker_name)
-    await message.answer("Is this a Team or Solo load? Please type:\n\n👥 Team\n👤 Solo", reply_markup=team_or_solo_driver)
+    await message.answer(f"🚛 Load Type Selection\n\n"
+                         f"Is this a Team load (multiple drivers) or a Solo load (one driver)?\n"
+                         f"Type your choice:\n\n"
+                         f"-- 👥 Team\n"
+                         f"-- 👤 Solo", reply_markup=team_or_solo_driver)
     await AssignLoad.team_or_solo.set()
 
 # Callback handler for Team selection
 @dp.callback_query_handler(text="team", state=AssignLoad.team_or_solo)
 async def team_selected(call: CallbackQuery, state: FSMContext):
     await state.update_data(team_or_solo="Team")
-    await call.message.answer("Please enter the Pickup Location:")
+    await call.message.edit_text(f"🗺️ Provide the Pickup Location\n\n"
+                              f"Enter the full address for the pickup, including:\n"
+                              f"-- Street Address\n"
+                              f"-- City, State\n"
+                              f"-- ZIP Code\n\n"
+                              f"Example: \"123 Main St, City, State, 12345\"")
     await AssignLoad.pickup_location.set()
     await call.answer()  # Acknowledge the callback to remove loading state on the button
 
@@ -206,7 +223,12 @@ async def team_selected(call: CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text="solo", state=AssignLoad.team_or_solo)
 async def solo_selected(call: CallbackQuery, state: FSMContext):
     await state.update_data(team_or_solo="Solo")
-    await call.message.answer("Please enter the Pickup Location:")
+    await call.message.edit_text(f"📍 Pickup Location Required\n\n"
+                              f"Please enter the Pickup Location, including:\n"
+                              f"-- Street Address\n"
+                              f"-- City, State\n"
+                              f"-- ZIP Code\n\n"
+                              f"Example: \"123 Main St, City, State, 12345\"")
     await AssignLoad.pickup_location.set()
     await call.answer()  # Acknowledge the callback to remove loading state on the button
 
@@ -215,16 +237,26 @@ async def solo_selected(call: CallbackQuery, state: FSMContext):
 async def enter_pickup_location(message: types.Message, state: FSMContext):
     pickup_location = message.text
     if not validate_location(pickup_location):
-        await message.answer("Invalid location format. Please enter a valid location, including ZIP code (e.g., '123 Main St, City, State, 12345').")
+        await message.answer(f"⚠️ Invalid Location\n\n"
+                              f"Ensure the location includes:\n"
+                              f"-- Street Address\n"
+                              f"-- City, State\n"
+                              f"-- ZIP Code\n\n"
+                              f"Example: \"123 Main St, City, State, 12345\"")
         return
     await state.update_data(pickup_location=pickup_location)
-    await message.answer("Please enter the Pickup Date & Time (e.g., YYYY-MM-DD HH:MM):", reply_markup=pickup_datetime_options)
+    await message.answer(f"🗓️ Select the Pickup Date & Time Type:\n\n"
+                         f"-- Appointment Date & Time: Specify exact date and time.\n"
+                         f"-- Date & Time (Range Possible): Provide a time range.\n"
+                         f"-- First Come First Serve: No specific appointment required", reply_markup=pickup_datetime_options)
     await AssignLoad.pickup_datetime.set()
 
 # Callback handler for Appointment Date & Time
 @dp.callback_query_handler(text="appointment_datetime", state=AssignLoad.pickup_datetime)
 async def select_appointment_datetime(call: CallbackQuery, state: FSMContext):
-    await call.message.answer("Please enter the Appointment Date & Time (e.g., MM/DD/YYYY HH:MM):")
+    await call.message.edit_text(f"📅 Enter the Appointment Date & Time\n\n"
+                                 f"💡 Example: MM/DD/YYYY HH:MM\n\n"
+                                 f"Ensure the format is correct to proceed.")
     await state.update_data(datetime_type="appointment")
     await AssignLoad.pickup_datetime.set()
     await call.answer()
@@ -232,7 +264,9 @@ async def select_appointment_datetime(call: CallbackQuery, state: FSMContext):
 # Callback handler for Date & Time (Range Possible)
 @dp.callback_query_handler(text="datetime_range", state=AssignLoad.pickup_datetime)
 async def select_datetime_range(call: CallbackQuery, state: FSMContext):
-    await call.message.answer("Please enter the Pickup Date & Time range (e.g., MM/DD/YYYY HH:MM - HH:MM):")
+    await call.message.edit_text(f"⏰ Enter the Pickup Date & Time Range\n\n"
+                                 f"📌 Format: MM/DD/YYYY HH:MM - HH:MM\n\n"
+                                 f"Ensure the format is correct to avoid delays.")
     await state.update_data(datetime_type="range")
     await AssignLoad.pickup_datetime.set()
     await call.answer()
@@ -241,7 +275,9 @@ async def select_datetime_range(call: CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text="fcfs", state=AssignLoad.pickup_datetime)
 async def select_fcfs(call: CallbackQuery, state: FSMContext):
     await state.update_data(datetime_type="fcfs", pickup_datetime="First Come First Serve")
-    await call.message.answer("Please enter the Delivery Location:")
+    await call.message.edit_text(f"📍 Enter the Delivery Location\n\n"
+                                 f"💡 Example: 123 Main St, City, State, ZIP Code\n\n"
+                                 f"Please ensure the format is correct to avoid delays.")
     await AssignLoad.delivery_location.set()
     await call.answer()
 
@@ -256,16 +292,23 @@ async def enter_pickup_datetime(message: types.Message, state: FSMContext):
     if datetime_type == "appointment":
         # Appointment Date & Time: Validate single datetime format
         if not validate_datetime_us(pickup_datetime_input):
-            await message.answer("Invalid format. Please enter the Appointment Date & Time in the format: MM/DD/YYYY HH:MM")
+            await message.answer(f"⚠️ Error: Invalid Format\n\n"
+                                 f"✅ Ensure the Appointment Date & Time follows this format:\n"
+                                 f"🕒 MM/DD/YYYY HH:MM\n\n"
+                                 f"Example: 01/01/2024 10:00")
             return
         await state.update_data(pickup_datetime=pickup_datetime_input)
 
     elif datetime_type == "range":
         # Date & Time (Range Possible): Validate either single datetime or datetime range
         if not (validate_datetime_us(pickup_datetime_input) or validate_datetime_range_us(pickup_datetime_input)):
-            await message.answer("Invalid format. Please enter the Pickup Date & Time in one of the following formats:\n"
-                                 "- Single: MM/DD/YYYY HH:MM\n"
-                                 "- Range: MM/DD/YYYY HH:MM - HH:MM")
+            await message.answer(f"⚠️ Error: Invalid Input\n\n"
+                                 f"📅 The Pickup Date & Time must follow one of these formats:\n"
+                                 f"🔹 Single Date & Time: 🕒 MM/DD/YYYY HH:MM\n"
+                                 f"🔹 Time Range: 🕒 MM/DD/YYYY HH:MM - HH:MM\n\n"
+                                 f"Examples:\n"
+                                 f"-- Single: 01/01/2024 10:00\n"
+                                 f"-- Range: 01/01/2024 09:00 - 17:00")
             return
         await state.update_data(pickup_datetime=pickup_datetime_input)
 
@@ -274,7 +317,9 @@ async def enter_pickup_datetime(message: types.Message, state: FSMContext):
         await state.update_data(pickup_datetime="First Come First Serve")
 
     # Proceed to the next step after setting pickup_datetime
-    await message.answer("Please enter the Delivery Location:")
+    await message.answer(f"📍 Please provide the Delivery Location:\n\n"
+                         f"📌 Example: 123 Main St, City, State, ZIP Code\n\n"
+                         f"Accurate details help ensure timely delivery.")
     await AssignLoad.delivery_location.set()
 
 @dp.message_handler(state=AssignLoad.delivery_location)
@@ -284,26 +329,37 @@ async def enter_delivery_location(message: types.Message, state: FSMContext):
     # Validate the delivery location format
     if not validate_location(delivery_location):
         await message.answer(
-            "Invalid location format. Please enter a valid delivery location including ZIP code "
-            "(e.g., '123 Main St, City, State, 12345')."
+            f"⚠️ Error: Invalid Location Format\n\n"
+            f"Please enter a valid delivery address with a ZIP code.\n\n"
+            f"Example:\n"
+            f"123 Main St, City, State, 12345"
         )
         return  # Stops here if the location is invalid, allowing the dispatcher to retry
 
     # If valid, store the location and proceed to the next step
     await state.update_data(delivery_location=delivery_location)
-    await message.answer("Please enter the Delivery Date & Time (e.g., MM/DD/YYYY HH:MM):", reply_markup=delivery_datetime_options)
+    await message.answer(f"🗓️ Select the Delivery Data & Time:\n\n"
+                         f"-- Appointment Date & Time: Specify exact date and time.\n"
+                         f"-- Date & Time (Range Possible): Provide a time range.\n"
+                         f"-- First Come First Serve: No specific appointment required", reply_markup=delivery_datetime_options)
     await AssignLoad.delivery_datetime.set()
 
 @dp.callback_query_handler(text="delivery_appointment_datetime", state=AssignLoad.delivery_datetime)
 async def select_delivery_appointment_datetime(call: CallbackQuery, state: FSMContext):
-    await call.message.answer("Please enter the Delivery Appointment Date & Time (e.g., MM/DD/YYYY HH:MM):")
+    await call.message.edit_text(f"📅 Delivery Appointment Date & Time Required\n\n"
+                                 f"Please enter the delivery appointment date and time in this format:\n"
+                                 f"🕒 MM/DD/YYYY HH:MM\n"
+                                 f"Example: 12/25/2024 14:30")
     await state.update_data(datetime_type="appointment")
     await AssignLoad.delivery_datetime.set()
     await call.answer()
 
 @dp.callback_query_handler(text="delivery_datetime_range", state=AssignLoad.delivery_datetime)
 async def select_delivery_datetime_range(call: CallbackQuery, state: FSMContext):
-    await call.message.answer("Please enter the Delivery Date & Time range (e.g., MM/DD/YYYY HH:MM - HH:MM):")
+    await call.message.edit_text(f"📅 Input Required: Delivery Date & Time Range\n\n"
+                                 f"Kindly provide the delivery date and time range using the format:\n\n"
+                                 f"Format: MM/DD/YYYY HH:MM - HH:MM\n"
+                                 f"Example: 12/25/2024 14:30 - 18:00")
     await state.update_data(datetime_type="range")
     await AssignLoad.delivery_datetime.set()
     await call.answer()
@@ -311,9 +367,15 @@ async def select_delivery_datetime_range(call: CallbackQuery, state: FSMContext)
 @dp.callback_query_handler(text="delivery_fcfs", state=AssignLoad.delivery_datetime)
 async def select_delivery_fcfs(call: CallbackQuery, state: FSMContext):
     await state.update_data(datetime_type="fcfs", delivery_datetime="First Come First Serve")
-    await call.message.answer("Please enter the Loaded Miles:")
+    await call.message.edit_text(f"📏 Input Needed: Loaded Miles\n\n"
+                                 f"Kindly provide the total loaded miles. Ensure the value is positive and numeric.\n"
+                                 f"Example: 150.5")
     await AssignLoad.loaded_miles.set()
     await call.answer()
+
+
+#### Need to start from here
+
 
 @dp.message_handler(state=AssignLoad.delivery_datetime)
 async def enter_delivery_datetime(message: types.Message, state: FSMContext):
@@ -493,66 +555,6 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
     finally:
         # Acknowledge callback
         await call.answer()
-
-
-@dp.callback_query_handler(text="go_back", state="*")
-async def go_back_handler(call: types.CallbackQuery, state: FSMContext):
-    """
-    Handles the Back button, moving the user to the previous FSM state from any active state.
-    """
-    # Get the current state
-    current_state = await state.get_state()
-    logging.info(f"Current State: {current_state}")
-
-    # Define the state transition order
-    state_order = [
-        DispatchState.dispatch_main.state,
-        AssignLoad.truck_number.state,
-        AssignLoad.load_number.state,
-        AssignLoad.broker_name.state,
-        AssignLoad.team_or_solo.state,
-        AssignLoad.pickup_location.state,
-        AssignLoad.pickup_datetime.state,
-        AssignLoad.delivery_location.state,
-        AssignLoad.delivery_datetime.state,
-        AssignLoad.loaded_miles.state,
-        AssignLoad.deadhead_miles.state,
-        AssignLoad.load_rate.state,
-        AssignLoad.confirmation.state,
-    ]
-
-    # Handle missing current state
-    if not current_state:
-        await call.message.answer("⚠️ No active step to go back from.", reply_markup=navigation_options)
-        return
-
-    # Determine the previous state
-    if current_state in state_order:
-        current_index = state_order.index(current_state)
-        logging.info(f"Current Index: {current_index}")
-        if current_index > 0:
-            previous_state = state_order[current_index - 1]
-            await state.set_state(previous_state)
-            await call.message.answer("⬅️ Returning to the previous step.", reply_markup=navigation_options)
-        else:
-            await call.message.answer("🔙 You are already at the first step.", reply_markup=navigation_options)
-    else:
-        await call.message.answer("⚠️ Cannot determine the previous state.", reply_markup=navigation_options)
-
-    await call.answer()
-
-
-
-@dp.callback_query_handler(text="close_load_assignment", state="*")
-async def close_load_assignment_handler(call: types.CallbackQuery, state: FSMContext):
-    """
-    Handles the Close button, ending the load assignment process and returning to the main page.
-    """
-    await state.finish()  # Clear FSM context
-    full_name = get_full_name_by_user_id(call.from_user.id)
-    await call.message.answer(f"✅ Load assignment process canceled. Returning to the main menu, {full_name}.", reply_markup=dispatcher_main_features)
-    await call.answer("✅ Load assignment closed.")
-
 
 
 # ====== END: Assign Load Feature (Dispatcher) ======
