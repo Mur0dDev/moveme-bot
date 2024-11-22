@@ -373,10 +373,6 @@ async def select_delivery_fcfs(call: CallbackQuery, state: FSMContext):
     await AssignLoad.loaded_miles.set()
     await call.answer()
 
-
-#### Need to start from here
-
-
 @dp.message_handler(state=AssignLoad.delivery_datetime)
 async def enter_delivery_datetime(message: types.Message, state: FSMContext):
     # Retrieve the datetime type selected by the dispatcher
@@ -387,16 +383,20 @@ async def enter_delivery_datetime(message: types.Message, state: FSMContext):
     if datetime_type == "appointment":
         # Appointment Date & Time: Validate single datetime format
         if not validate_datetime_us(delivery_datetime_input):
-            await message.answer("Invalid format. Please enter the Delivery Date & Time in the format: MM/DD/YYYY HH:MM")
+            await message.answer(f"❌ Format Error\n\n"
+                                 f"Please use the following format for entering the Delivery Date & Time:\n\n"
+                                 f"MM/DD/YYYY HH:MM. Thank you!")
             return
         await state.update_data(delivery_datetime=delivery_datetime_input)
 
     elif datetime_type == "range":
         # Date & Time (Range Possible): Validate either single datetime or datetime range
         if not (validate_datetime_us(delivery_datetime_input) or validate_datetime_range_us(delivery_datetime_input)):
-            await message.answer("Invalid format. Please enter the Delivery Date & Time in one of the following formats:\n"
-                                 "- Single: MM/DD/YYYY HH:MM\n"
-                                 "- Range: MM/DD/YYYY HH:MM - HH:MM")
+            await message.answer(f"📅 Date & Time Format Required\n\n"
+                                 f"Your entry must follow one of the formats below:\n"
+                                 f"-- Single Format: MM/DD/YYYY HH:MM\n"
+                                 f"-- Range Format: MM/DD/YYYY HH:MM - HH:MM\n\n"
+                                 f"Let’s fix this and proceed!")
             return
         await state.update_data(delivery_datetime=delivery_datetime_input)
 
@@ -405,7 +405,9 @@ async def enter_delivery_datetime(message: types.Message, state: FSMContext):
         await state.update_data(delivery_datetime="First Come First Serve")
 
     # Proceed to the next step after setting delivery_datetime
-    await message.answer("Please enter the Loaded Miles:")
+    await message.answer(f"🚛 Loaded Miles Required\n\n"
+                         f"Enter the loaded miles for this load.\n"
+                         f"📝 Example: 123.45")
     await AssignLoad.loaded_miles.set()
 
 @dp.message_handler(state=AssignLoad.loaded_miles)
@@ -414,12 +416,16 @@ async def enter_loaded_miles(message: types.Message, state: FSMContext):
 
     # Validate loaded miles using the regular expression
     if not validate_loaded_miles(loaded_miles):
-        await message.answer("Invalid input. Please enter a positive numerical value for Loaded Miles (e.g., 100 or 100.5).")
+        await message.answer(f"⚠️ Incorrect Format\n\n"
+                             f"Loaded Miles must be a positive number.\n"
+                             f"💡 Examples: 120 or 120.50. Please try again.")
         return
 
     # Convert to float for precision and update state
     await state.update_data(loaded_miles=float(loaded_miles))
-    await message.answer("Please enter the Deadhead Miles:")
+    await message.answer(f"🛣️ Deadhead Miles Entry\n\n"
+                         f"Please enter the Deadhead Miles as a positive number.\n"
+                         f"📝 Example: 50 or 50.5.")
     await AssignLoad.deadhead_miles.set()
 
 @dp.message_handler(state=AssignLoad.deadhead_miles)
@@ -428,12 +434,15 @@ async def enter_deadhead_miles(message: types.Message, state: FSMContext):
 
     # Validate deadhead miles using the regular expression
     if not validate_loaded_miles(deadhead_miles):  # Reusing validate_loaded_miles for similar validation
-        await message.answer("Invalid input. Please enter a positive numerical value for Deadhead Miles (e.g., 50 or 50.5).")
+        await message.answer(f"⚠️ Invalid Deadhead Miles\n\n"
+                             f"The input must be a positive number.\n"
+                             f"📋 Example formats: 45 or 45.75.")
         return
 
     # Convert to float for precision and update state
     await state.update_data(deadhead_miles=float(deadhead_miles))
-    await message.answer("Please enter the Trip Rate:")
+    await message.answer(f"💵 Enter Trip Rate\n\n"
+                         f"Please provide the Trip Rate in numerical format.")
     await AssignLoad.load_rate.set()
 
 @dp.message_handler(state=AssignLoad.load_rate)
@@ -442,7 +451,8 @@ async def enter_load_rate(message: types.Message, state: FSMContext):
 
     # Validate load rate using the regular expression
     if not validate_loaded_miles(load_rate):  # Reusing validate_loaded_miles for similar validation
-        await message.answer("Invalid input. Please enter a positive numerical value for Load Rate (e.g., 1500 or 1500.75).")
+        await message.answer(f"❌ Incorrect Load Rate Format\n\n"
+                             f"Ensure you input a positive number for the Load Rate (examples: 1500, 1500.75).\nPlease try again.")
         return
 
     # Convert to float for precision and update state
@@ -453,26 +463,26 @@ async def enter_load_rate(message: types.Message, state: FSMContext):
 
     # Format the summary of load details
     summary = (
-        f"**Load Assignment Summary**\n"
-        f"Company Name: {data['company_name']}\n"
-        f"Group Name: {data['group_name']}\n"
-        f"Group ID: {data['group_id']}\n"
-        f"Dispatcher Name: {data['dispatcher_name']}\n"
-        f"Driver Name: {data.get('driver_name')}\n"
-        f"Truck Number: {data.get('truck_number')}\n"
-        f"Load Number: {data.get('load_number')}\n"
-        f"Broker Name: {data.get('broker_name')}\n"
-        f"Load Type: {data.get('team_or_solo')}\n"
-        f"Pickup Location: {data.get('pickup_location')}\n"
-        f"Pickup Date & Time: {data.get('pickup_datetime')}\n"
-        f"Delivery Location: {data.get('delivery_location')}\n"
-        f"Delivery Date & Time: {data.get('delivery_datetime')}\n"
-        f"Loaded Miles: {data.get('loaded_miles')}\n"
-        f"Deadhead Miles: {data.get('deadhead_miles')}\n"
-        f"Load Rate: {data.get('load_rate')}\n"
+        f"📋 Load Review:\n\n"
+        f"🚛 Truck Number: {data.get('truck_number')}\n"
+        f"🆔 Load Number: {data.get('load_number')}\n"
+        f"👤 Driver Name: {data.get('driver_name')}\n"
+        f"💼 Broker Name: {data.get('broker_name')}\n"
+        f"🏢 Company Name: {data['company_name']}\n"
+        f"👥 Group Name: {data['group_name']}\n"
+        f"📍 Pickup Location: {data.get('pickup_location')}\n"
+        f"📅 Pickup Date & Time: {data.get('pickup_datetime')}\n"
+        f"📍 Delivery Location: {data.get('delivery_location')}\n"
+        f"📅 Delivery Date & Time: {data.get('delivery_datetime')}\n"
+        f"🛣️ Loaded Miles: {data.get('loaded_miles')}\n"
+        f"🛤️ Deadhead Miles: {data.get('deadhead_miles')}\n"
+        f"💵 Load Rate: {data.get('load_rate')}\n"
+        f"👥 Load Type: {data.get('team_or_solo')}\n"
+        f"📝 Dispatcher Name: {data['dispatcher_name']}\n"
     )
 
-    await message.answer(summary + "\n\nReview your load details and confirm to submit or edit.", reply_markup=confirmation_options)
+    await message.answer(summary + "\n\nPlease carefully review all the entered load details to ensure accuracy. Once confirmed, you can choose to submit the information or make edits if needed.\n"
+                                   "🔍 Double-check everything to avoid errors before proceeding.", reply_markup=confirmation_options)
     await AssignLoad.confirmation.set()
 
 
@@ -484,31 +494,40 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
 
         formatted_rate = "${:,.2f}".format(data.get('load_rate', 0))  # Format rate with commas and two decimals
         load_assignment_message = (
-            f"🚚 **Load Details**\n"
-            f"🆔 **Load Number**: {data.get('load_number')}\n"
-            f"💼 **Broker Name**: {data.get('broker_name')}\n"
-            f"👥 **Load Type**: {data.get('team_or_solo')}\n\n"
-            f"📅 **Pickup**: {data.get('pickup_datetime')}\n"
-            f"📍 **Location**:\n{data.get('pickup_location')}\n\n"
-            f"📅 **Delivery**: {data.get('delivery_datetime')}\n"
-            f"📍 **Location**:\n{data.get('delivery_location')}\n\n"
-            f"📏 **Total Miles**: {data.get('loaded_miles')}\n"
-            f"💵 **Rate**: {formatted_rate}\n\n"
-            f"📜 **Company's Policy**\n"
-            f"🏦 **Payment Policy**:\nNo BOL, No Money\n\n"
-            f"⛔ **Penalties**:\n\n"
-            f"- Late for PU / DEL on street loads (without reason): **$300**\n"
-            f"- Driver communication issues: **$400**\n"
-            f"- No Amazon Relay app / TMS: **$400**\n"
-            f"- Late for PU / DEL on Amazon loads (without reason): **$500**\n"
-            f"- No update: **$400**\n"
-            f"- Rejecting confirmed load: **$1000**\n\n"
-            f"🔔 **Important Notes**:\n\n"
-            f"- **Traffic/Construction/Weather**: Always tag DISPATCHERS for updates.\n"
-            f"- **Scale the load** after pickup to avoid axle overweight issues.\n"
-            f"- **Never leave the loaded trailer unattended.**\n"
-            f"- Verify the **BOL correctness** and upload using **CamScan**.\n"
-            f"- **Send trailer photos** to the group chat immediately.\n"
+            f"🚛 Assigned Load Information – Confirm all entries.\n\n"
+            f"🔹 Load Number: {data.get('load_number')}\n"
+            f"🔹 Broker: {data.get('broker_name')}\n"
+            f"🔹 Type: {data.get('team_or_solo')}\n\n"
+            
+            f"📅 Pickup Details:\n"
+            f"🕒 Date/Time - {data.get('pickup_datetime')}\n"
+            f"📍 Location - {data.get('pickup_location')}.\n\n"
+            
+            f"📦 Delivery Details:\n"
+            f"🕒 Date/Time - {data.get('delivery_datetime')}\n"
+            f"📍 Location - {data.get('delivery_location')}.\n\n"
+            
+            f"📏 Total Miles: {data.get('loaded_miles')}\n"
+            f"💵 Rate: {formatted_rate}\n\n"
+            
+            f"📜 Company's Policy – Payment is contingent on the submission of the BOL.\n"
+            f"🏦 Payment Policy: No BOL, No Money.\n\n"
+            
+            f"❗ Avoid penalties by following guidelines: Key infractions detailed below.\n\n"
+            
+            f"- Late for pickup/delivery on street loads (without reason): $300\n"
+            f"- Driver communication issues: $400\n"
+            f"- No Amazon Relay app/TMS: $400\n"
+            f"- Late for pickup/delivery on Amazon loads (without reason): $500\n"
+            f"- No update provided: $400\n"
+            f"- Rejecting confirmed load: $1000\n\n"
+            
+            f"🚨 Operational Notes: Critical steps to avoid delays.\n\n"
+            f"- Always inform DISPATCHERS of traffic, construction, or weather delays.\n"
+            f"- Scale the load after pickup to avoid axle overweight issues.\n"
+            f"- Never leave the loaded trailer unattended.\n"
+            f"- Verify BOL correctness and upload using CamScan.\n"
+            f"- Send trailer photos to the group chat immediately.\n"
         )
 
         # Send message to the driver's group
@@ -546,11 +565,12 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
 
     except KeyError as e:
         logging.error(f"KeyError: {e}. Missing data in FSM context.")
-        await call.message.answer("❌ Error: Missing required data. Please try again.")
+        await call.message.answer()
 
     except Exception as e:
         logging.exception(f"Unexpected error: {e}")
-        await call.message.answer("❌ Error: Failed to process load assignment. Please contact support.")
+        await call.message.answer(f"🚨 Issue Detected: We couldn't complete the load assignment. Please get in touch with support.\n"
+                                  "admin: @iamurod")
 
     finally:
         # Acknowledge callback
@@ -565,7 +585,6 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text="🔍 Truck Status Check", state=DispatchState.dispatch_main)
 async def handle_truck_status(call: types.CallbackQuery):
 
-    await call.answer("Truck Status feature selected.")
     # Respond with an "under development" message
     message = get_random_message(truck_status_under_development_messages)
     await call.message.edit_text(message, reply_markup=dispatcher_start_over)
@@ -579,10 +598,8 @@ async def handle_start_over(call: types.CallbackQuery):
     # Retrieve the full name from Google Sheets based on user_id
     full_name = get_full_name_by_user_id(user_id)
     await call.message.edit_text(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
-    await call.answer("Start Over selected.")
 
 @dp.callback_query_handler(text="🔚 End and Close", state=DispatchState.dispatch_main)
 async def handle_close(call: types.CallbackQuery):
     await call.message.delete()
-    await call.answer("Closing the dispatcher menu.")
     # Add further handling here
