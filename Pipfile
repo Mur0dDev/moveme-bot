@@ -9,6 +9,7 @@ environs = "~=8.0.0"
 google-api-python-client = "*"
 gspread = "*"
 oauth2client = "*"
+cachetools = "*"
 
 [dev-packages]
 
