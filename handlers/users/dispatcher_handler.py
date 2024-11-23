@@ -501,11 +501,11 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
             
             f"📅 Pickup Details:\n"
             f"🕒 Date/Time - {data.get('pickup_datetime')}\n"
-            f"📍 Location - {data.get('pickup_location')}.\n\n"
+            f"📍 Location - <code>{data.get('pickup_location')}</code>.\n\n"
             
             f"📦 Delivery Details:\n"
             f"🕒 Date/Time - {data.get('delivery_datetime')}\n"
-            f"📍 Location - {data.get('delivery_location')}.\n\n"
+            f"📍 Location - <code>{data.get('delivery_location')}</code>.\n\n"
             
             f"📏 Total Miles: {data.get('loaded_miles')}\n"
             f"💵 Rate: {formatted_rate}\n\n"
@@ -565,7 +565,6 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
 
     except KeyError as e:
         logging.error(f"KeyError: {e}. Missing data in FSM context.")
-        await call.message.answer()
 
     except Exception as e:
         logging.exception(f"Unexpected error: {e}")
