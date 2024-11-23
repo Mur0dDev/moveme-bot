@@ -10,6 +10,7 @@ google-api-python-client = "*"
 gspread = "*"
 oauth2client = "*"
 cachetools = "*"
+pyotp = "*"
 
 [dev-packages]
 

@@ -8,3 +8,4 @@ class PasswordState(StatesGroup):
     search_email = State()        # State for searching email
     select_email = State()        # State for selecting a specific email
     add_comment = State()         # State for asking the user for a comment before full access
+    refresh_otp = State()
