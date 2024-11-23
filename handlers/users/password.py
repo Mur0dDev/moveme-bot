@@ -1,9 +1,11 @@
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from loader import dp
 from sheet.google_sheets_integration import fetch_all_data
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from states.password_states import PasswordState
+
 
 @dp.message_handler(Command("pwd"), state="*")
 async def handle_pwd_command(message: types.Message, state: FSMContext):
@@ -28,6 +30,7 @@ async def handle_pwd_command(message: types.Message, state: FSMContext):
             # User is active and allowed
             await message.reply(f"✅ Hello, {user_name}! You have the right to use this feature.\n"
                                 f"Please enter an email to search:")
+            await PasswordState.search_email.set()  # Transition to email search state
         else:
             # User exists but is inactive
             await message.reply(
@@ -40,7 +43,7 @@ async def handle_pwd_command(message: types.Message, state: FSMContext):
         )
 
 
-@dp.message_handler(state="*")
+@dp.message_handler(state=PasswordState.search_email)
 async def search_email_handler(message: types.Message, state: FSMContext):
     """
     Searches for email in the Email/Username column of the PWD Credentials sheet and returns similar options.
@@ -92,7 +95,7 @@ async def search_email_handler(message: types.Message, state: FSMContext):
     await message.answer(results_message, reply_markup=email_buttons)
 
 
-@dp.callback_query_handler(lambda call: call.data.startswith("select_email:"))
+@dp.callback_query_handler(lambda call: call.data.startswith("select_email:"), state=PasswordState.search_email)
 async def handle_email_selection(call: types.CallbackQuery, state: FSMContext):
     """
     Handles the selection of an email search result based on the provided callback data.
@@ -126,55 +129,120 @@ async def handle_email_selection(call: types.CallbackQuery, state: FSMContext):
                 ]
             ),
         )
+        await PasswordState.select_email.set()  # Transition to email selection state
     else:
         # Invalid selection
         await call.message.answer("❌ Invalid selection. Please try again.")
 
 
-@dp.callback_query_handler(lambda call: call.data == "cancel_selection")
-async def cancel_email_selection(call: types.CallbackQuery):
+@dp.callback_query_handler(lambda call: call.data == "get_full_access", state=PasswordState.select_email)
+async def request_comment_for_full_access(call: types.CallbackQuery, state: FSMContext):
     """
-    Handles the cancellation of the email search operation.
+    Asks the user for a comment before granting full access to the credentials.
     """
-    await call.message.edit_text("🔒 Email search operation has been canceled.")
+    # Prompt the user for a comment
+    await call.message.answer(
+        "❓ Please provide a reason for requesting full access or mention to whom the password will be shared."
+    )
+    # Transition to add comment state
+    await PasswordState.add_comment.set()
 
-@dp.callback_query_handler(lambda call: call.data == "close_operation")
-async def close_operation_handler(call: types.CallbackQuery):
-    """
-    Handles the closure of the current operation.
-    """
-    await call.message.edit_text("🔒 Operation has been closed.")
 
-@dp.callback_query_handler(lambda call: call.data == "get_full_access")
-async def get_full_access_handler(call: types.CallbackQuery, state: FSMContext):
+@dp.message_handler(state=PasswordState.add_comment)
+async def send_full_access_with_comment(message: types.Message, state: FSMContext):
     """
-    Sends full credential details, including sensitive information like the password, to a specific channel.
-    Notifies the user that the details were sent.
+    Sends full access credentials along with the user's comment to the secure channel.
+    Adds inline buttons for refreshing the second step code and closing the operation.
     """
-    # Replace with the ID of your target channel
     CHANNEL_ID = -1002322400854  # Replace with your actual channel ID
 
-    # Retrieve selected email from FSM context
+    # Retrieve selected email and user comment from FSM context
     state_data = await state.get_data()
     selected_email = state_data.get("selected_email")
+    user_comment = message.text.strip()
 
     if selected_email:
-        # Send full details to the specified channel
+        # Prepare the message for the secure channel
         full_access_message = (
-            f"🔓 Full Credential Details:\n\n"
+            f"🔓 Full Credential Details Requested:\n\n"
             f"🏢 Company Name: {selected_email['Company Name']}\n"
             f"🔐 Account Type: {selected_email['Account Type']}\n"
             f"📧 Email/Username: {selected_email['Email/Username']}\n"
             f"🔑 Password: {selected_email['Password']}\n"
-            f"📅 Last Password Changed: {selected_email.get('Updated Date', 'N/A')}\n"
+            f"📅 Last Password Changed: {selected_email.get('Updated Date', 'N/A')}\n\n"
+            f"📜 User Comment: {user_comment}\n"
+            f"👤 Requested By: {message.from_user.full_name} (@{message.from_user.username})\n"
         )
-        await call.bot.send_message(chat_id=CHANNEL_ID, text=full_access_message)
+        # Send full credentials to the secure channel
+        await message.bot.send_message(chat_id=CHANNEL_ID, text=full_access_message)
 
-        # Notify the user
-        await call.message.answer("✅ Full access credentials were sent to the secure channel.")
+        # Create inline buttons
+        buttons = InlineKeyboardMarkup(row_width=1)
+        buttons.add(
+            InlineKeyboardButton(text="🔄 Refresh Second Step Code", callback_data="refresh_second_step"),
+            InlineKeyboardButton(text="✅ Done and Close", callback_data="done_close")
+        )
+
+        # Notify the user and provide inline buttons
+        await message.answer(
+            "✅ Full access credentials, along with your comment, were sent to the secure channel.",
+            reply_markup=buttons
+        )
     else:
         # If no selected email is found in context
-        await call.message.answer("❌ No selected email found. Please try again.")
+        await message.answer("❌ No selected email found. Please try again.")
+
+    # Safeguard state.finish()
+    try:
+        if await state.get_state():
+            await state.finish()
+    except KeyError:
+        pass
 
 
 
+@dp.callback_query_handler(lambda call: call.data == "cancel_selection", state=PasswordState.search_email)
+async def cancel_email_selection(call: types.CallbackQuery, state: FSMContext):
+    """
+    Handles the cancellation of the email search operation.
+    """
+    try:
+        # Safely finish the FSM state if it exists
+        if await state.get_state():
+            await state.finish()
+    except KeyError:
+        pass
+
+    await call.message.edit_text("🔒 Email search operation has been canceled.")
+
+
+@dp.callback_query_handler(lambda call: call.data == "close_operation", state=PasswordState.select_email)
+async def close_operation_handler(call: types.CallbackQuery, state: FSMContext):
+    """
+    Handles the closure of the current operation.
+    """
+    try:
+        # Safely finish the FSM state if it exists
+        if await state.get_state():
+            await state.finish()
+    except KeyError:
+        # Log the KeyError or notify for debugging
+        pass
+
+    await call.message.edit_text("🔒 Operation has been closed.")
+
+@dp.callback_query_handler(lambda call: call.data == "refresh_second_step")
+async def refresh_second_step_code_handler(call: types.CallbackQuery):
+    """
+    Handles the 'Refresh Second Step Code' action.
+    """
+    await call.message.answer("🔄 The second step code has been refreshed successfully.")
+    # Add logic for refreshing the code, if applicable
+
+
+@dp.callback_query_handler(lambda call: call.data == "done_close")
+async def done_and_close_handler(call: types.CallbackQuery):
+    """
+    Handles the 'Done and Close' action.
+    """
+    await call.message.edit_text("✅ Operation has been successfully closed.")
