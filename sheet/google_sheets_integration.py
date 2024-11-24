@@ -18,7 +18,7 @@ def setup_google_sheets():
     Sets up Google Sheets connection to the "User Credentials" sheet.
     """
     print("Setting up Google Sheets connection for User Credentials...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -33,7 +33,7 @@ def setup_group_credentials_sheet():
     Sets up Google Sheets connection to the "Group Credentials" sheet.
     """
     print("Setting up Google Sheets connection for Group Credentials...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
