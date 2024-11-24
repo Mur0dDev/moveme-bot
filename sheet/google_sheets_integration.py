@@ -53,7 +53,7 @@ def setup_load_management_sheet():
     Sets up Google Sheets connection to the "Load Management" sheet.
     """
     print("Setting up Google Sheets connection for Load Management...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -312,7 +312,7 @@ def init_google_sheets():
     Initialize the Google Sheets client using the service account credentials.
     """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(json_file_path, scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, scope)
     client = gspread.authorize(creds)
     return client
 
