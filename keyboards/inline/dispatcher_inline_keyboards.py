@@ -57,5 +57,3 @@ confirmation_options.add(
     InlineKeyboardButton(text="✏️ Edit", callback_data="confirm_edit"),
     InlineKeyboardButton(text="❌ Close", callback_data="confirm_close")
 )
-
-

@@ -1,4 +1,6 @@
 # Imports
+import logging
+
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.builtin import CommandStart
@@ -250,6 +252,15 @@ async def process_admin_decision(call: types.CallbackQuery):
         sheet = setup_google_sheets()
         add_user_to_sheet(sheet, user_data)
 
+        # **Update user cache memory**
+        try:
+            from sheet.google_sheets_integration import update_user_cache  # Ensure import is present
+            update_user_cache()  # Call the cache update function
+            await bot.send_message(call.from_user.id, "User cache successfully updated!")
+        except Exception as e:
+            logging.exception("Error updating user cache after approval.")
+            await bot.send_message(call.from_user.id, "Failed to update user cache. Please check the logs.")
+
         # Set the user's state to the department-specific state based on their role
         role = user_data.get("role")
         if role == "Dispatcher":
@@ -281,11 +292,21 @@ async def process_admin_decision(call: types.CallbackQuery):
         denied_user_data["role"] = "Denied User"  # Set role to "Denied User"
         add_user_to_sheet(sheet, denied_user_data)
 
+        # **Update user cache memory**
+        try:
+            from sheet.google_sheets_integration import update_user_cache  # Ensure import is present
+            update_user_cache()  # Call the cache update function
+            await bot.send_message(call.from_user.id, "User cache successfully updated!")
+        except Exception as e:
+            logging.exception("Error updating user cache after denial.")
+            await bot.send_message(call.from_user.id, "Failed to update user cache. Please check the logs.")
+
         # Notify admin of denial
         await call.answer(get_random_message(denial_confirmation_messages), show_alert=True)
 
     # Optional: Clean up admin's decision message
     await call.message.delete()
+
 
 
 @dp.message_handler(commands="new", state=PersonalData.phoneNumber)
