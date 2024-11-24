@@ -91,10 +91,10 @@ async def search_email_handler(message: types.Message, state: FSMContext):
     results_message = "🔎 Search Results:\nHere are the credentials matching your query:\n\n"
     for idx, entry in enumerate(matched_emails, start=1):
         results_message += (
-            f"🔎 Search Result {idx}:\n"
+            f"🔎 Search Result <b>{idx}</b>:\n"
             f"🏢 Company Name: {entry['Company Name']}\n"
             f"🔐 Account Type: {entry['Account Type']}\n"
-            f"📧 Email/Username: {entry['Email/Username']}\n"
+            f"📧 Email/Username: {entry['Email/Username']}\n\n"
         )
 
     # Generate inline buttons for selecting a result
@@ -328,9 +328,22 @@ async def refresh_second_step_code_handler(call: types.CallbackQuery, state: FSM
 
 
 
-@dp.callback_query_handler(lambda call: call.data == "done_close")
-async def done_and_close_handler(call: types.CallbackQuery):
+@dp.callback_query_handler(lambda call: call.data == "done_close", state=PasswordState.refresh_otp)
+async def done_and_close_handler(call: types.CallbackQuery, state: FSMContext):
     """
     Handles the 'Done and Close' action.
+    Finishes the state and informs the user they can use the /start command again.
     """
-    await call.message.edit_text("✅ Operation has been successfully closed.")
+    try:
+        # Safely finish the FSM state
+        if await state.get_state():
+            await state.finish()
+    except Exception as e:
+        logging.error(f"Error finishing state: {e}")
+
+    # Send the completion message
+    await call.message.edit_text(
+        "✅ Operation has been successfully closed.\n\n"
+        "You can now use the /start or /pwd command again to initiate a new session."
+    )
+

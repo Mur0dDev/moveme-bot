@@ -8,6 +8,7 @@ from cachetools import TTLCache, cached
 
 json_file_path = "C:\\Users\\user\\PycharmProjects\\moveme-bot\\autobot.json"
 home_json_file_path = "E:\\GitHub Projects\\moveme-bot\\autobot.json"
+laptop_json_file_path = "C:\\Users\\Milto\\PycharmProjects\\moveme-bot\\autobot.json"
 
 # Define the Google Sheets file name
 GOOGLE_SHEET_NAME = "Password Credentials"
@@ -22,7 +23,7 @@ def setup_google_sheets():
     Sets up Google Sheets connection to the "User Credentials" sheet.
     """
     print("Setting up Google Sheets connection for User Credentials...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(laptop_json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -37,7 +38,7 @@ def setup_group_credentials_sheet():
     Sets up Google Sheets connection to the "Group Credentials" sheet.
     """
     print("Setting up Google Sheets connection for Group Credentials...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(laptop_json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -53,7 +54,7 @@ def setup_load_management_sheet():
     Sets up Google Sheets connection to the "Load Management" sheet.
     """
     print("Setting up Google Sheets connection for Load Management...")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, [
+    creds = ServiceAccountCredentials.from_json_keyfile_name(laptop_json_file_path, [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ])
@@ -312,7 +313,7 @@ def init_google_sheets():
     Initialize the Google Sheets client using the service account credentials.
     """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(home_json_file_path, scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_name(laptop_json_file_path, scope)
     client = gspread.authorize(creds)
     return client
 
