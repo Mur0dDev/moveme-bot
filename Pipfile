@@ -11,6 +11,7 @@ gspread = "*"
 oauth2client = "*"
 cachetools = "*"
 pyotp = "*"
+asyncpg = "*"
 
 [dev-packages]
 

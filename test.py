@@ -1,23 +1,21 @@
-import pyotp
-
-def generate_totp_code(secret_key: str) -> str:
-    """
-    Generates a 6-digit TOTP code using the provided secret key.
-    The code refreshes every 30 seconds.
-
-    :param secret_key: Base32-encoded secret key
-    :return: 6-digit TOTP code
-    """
-    # Create a TOTP object with the provided key
-    totp = pyotp.TOTP(secret_key)
-    # Generate the current OTP
-    return totp.now()
-
-if __name__ == "__main__":
-    # Test the function with a sample key
-    test_secret_key = "rqcu52knzcq5ewc7huh5vw7o5ukq4ppw"  # Replace with a valid base32-encoded key
-    try:
-        otp_code = generate_totp_code(test_secret_key)
-        print(f"Generated OTP Code: {otp_code}")
-    except Exception as e:
-        print(f"Error generating OTP: {e}")
+import asyncio
+from utils.db_api.postgresql import Database
+async def test():
+    db = Database()
+    await db.create()
+    print("Users jadvalini yaratamiz...")
+    # await db.drop_users()
+    await db.create_table_users()
+    print("Yaratildi")
+    print("Foydalanuvchilarni qo'shamiz")
+    await db.add_user("anvar", "sariqdev", 123456789)
+    await db.add_user("olim", "olim223", 12341123)
+    await db.add_user("1", "1", 131231)
+    await db.add_user("1", "1", 23324234)
+    await db.add_user("John", "JohnDoe", 4388229)
+    print("Qo'shildi")
+    users = await db.select_all_users()
+    print(f"Barcha foydalanuvchilar: {users}")
+    user = await db.select_user(id=5)
+    print(f"Foydalanuvchi: {user}")
+asyncio.run(test())
