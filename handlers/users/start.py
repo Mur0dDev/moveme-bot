@@ -9,7 +9,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from filters import IsPrivate
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo, pickup_department
 from keyboards.inline.admin_approval_new_user_reg import admin_approval_new_user
-from sheet.google_sheets_integration import setup_google_sheets, add_user_to_sheet, get_user_role_by_telegram_id
+# from sheet.google_sheets_integration import setup_google_sheets, add_user_to_sheet
+from utils.db_api.database_operations import add_user_to_database
 from data.texts import (
     get_random_message,
     name_error_messages,
@@ -248,18 +249,14 @@ async def process_admin_decision(call: types.CallbackQuery):
         approval_success_text = get_random_message(approval_success_messages)
         await bot.send_message(user_id, approval_success_text)
 
-        # Write user data to Google Sheet
-        sheet = setup_google_sheets()
-        add_user_to_sheet(sheet, user_data)
-
-        # **Update user cache memory**
+        # Write user data to PostgreSQL database
         try:
-            from sheet.google_sheets_integration import update_user_cache  # Ensure import is present
-            update_user_cache()  # Call the cache update function
-            await bot.send_message(call.from_user.id, "User cache successfully updated!")
+            await add_user_to_database(user_data)
+            await bot.send_message(call.from_user.id, "User successfully added to the database!")
         except Exception as e:
-            logging.exception("Error updating user cache after approval.")
-            await bot.send_message(call.from_user.id, "Failed to update user cache. Please check the logs.")
+            logging.exception("Error adding user to PostgreSQL database.")
+            await bot.send_message(call.from_user.id, "Failed to add user to the database. Please check the logs.")
+            return
 
         # Set the user's state to the department-specific state based on their role
         role = user_data.get("role")
@@ -286,26 +283,24 @@ async def process_admin_decision(call: types.CallbackQuery):
         # Place user in DeniedState.denied_main
         await dp.storage.set_state(chat=user_id, user=user_id, state=DeniedState.denied_main)
 
-        # Write denied user data to Google Sheet with "Denied User" role
-        sheet = setup_google_sheets()
+        # Write denied user data to PostgreSQL database with "Denied User" role
         denied_user_data = user_data.copy()  # Copy original data to avoid modifying temp_user_data
         denied_user_data["role"] = "Denied User"  # Set role to "Denied User"
-        add_user_to_sheet(sheet, denied_user_data)
 
-        # **Update user cache memory**
         try:
-            from sheet.google_sheets_integration import update_user_cache  # Ensure import is present
-            update_user_cache()  # Call the cache update function
-            await bot.send_message(call.from_user.id, "User cache successfully updated!")
+            await add_user_to_database(denied_user_data)
+            await bot.send_message(call.from_user.id, "Denied user successfully added to the database!")
         except Exception as e:
-            logging.exception("Error updating user cache after denial.")
-            await bot.send_message(call.from_user.id, "Failed to update user cache. Please check the logs.")
+            logging.exception("Error adding denied user to PostgreSQL database.")
+            await bot.send_message(call.from_user.id, "Failed to add denied user to the database. Please check the logs.")
+            return
 
         # Notify admin of denial
         await call.answer(get_random_message(denial_confirmation_messages), show_alert=True)
 
     # Optional: Clean up admin's decision message
     await call.message.delete()
+
 
 
 

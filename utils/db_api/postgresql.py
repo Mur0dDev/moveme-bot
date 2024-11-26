@@ -13,12 +13,17 @@ class Database:
         self.pool: Union[Pool, None] = None
 
     async def create(self):
-        self.pool = await asyncpg.create_pool(
-            user=config.DB_USER,
-            password=config.DB_PASS,
-            host=config.DB_HOST,
-            database=config.DB_NAME
-        )
+        try:
+            self.pool = await asyncpg.create_pool(
+                user=config.DB_USER,
+                password=config.DB_PASS,
+                host=config.DB_HOST,
+                database=config.DB_NAME
+            )
+            print("Database pool created successfully.")
+        except Exception as e:
+            print(f"Failed to create database pool: {e}")
+            raise
 
     async def execute(self, command, *args,
                       fetch: bool = False,
