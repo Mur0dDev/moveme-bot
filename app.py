@@ -7,15 +7,22 @@ from utils.set_bot_commands import set_default_commands
 
 
 async def on_startup(dispatcher):
-    await db.create()
-    # await db.drop_users()
-    await db.create_table_users()
+    await db.create()  # Initialize the database connection
 
-    # Birlamchi komandalar (/star va /help)
+    # Create necessary tables
+    await db.create_table_user_credentials()  # Correct table name
+    await db.create_table_group_credentials()
+    await db.create_table_gross_sheet()
+    await db.create_table_allowed_users()
+    await db.create_table_pwd_credentials()
+    await db.create_table_access_logs()
+
+    # Set default commands
     await set_default_commands(dispatcher)
 
-    # Bot ishga tushgani haqida adminga xabar berish
+    # Notify admins
     await on_startup_notify(dispatcher)
+
 
 
 if __name__ == '__main__':
