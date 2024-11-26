@@ -1,57 +1,46 @@
-import asyncio
 from utils.db_api.postgresql import Database
-from asyncpg.exceptions import UniqueViolationError
+import asyncio
+from datetime import datetime
 
-
-async def test():
+async def test_database():
     db = Database()
-    await db.create()
-    print("Creating the Users table...")
+    await db.create()  # Initialize the database connection
 
-    # Drop the table if you want a clean start (comment out in production)
-    # await db.drop_users()
+    # Test table creation
+    print("Creating tables...")
+    await db.create_table_user_credentials()
+    await db.create_table_group_credentials()
+    await db.create_table_gross_sheet()
+    await db.create_table_allowed_users()
+    await db.create_table_pwd_credentials()
+    await db.create_table_access_logs()
+    print("All tables created successfully!")
 
-    await db.create_table_users()
-    print("Table created successfully.")
+    # Test inserting data into user_credentials
+    print("Inserting data into user_credentials...")
+    await db.add_user_credential(
+        telegram_id=123456789,
+        full_name="John Doe",
+        dob=datetime.strptime("1990-01-01", "%Y-%m-%d").date(),  # Convert to a date object
+        phone_number="+1234567890",
+        role="Dispatcher"
+    )
+    print("Inserted user credentials successfully!")
 
-    print("Adding users to the database...")
+    # Test selecting data from user_credentials
+    print("Selecting data from user_credentials...")
+    users = await db.select_all_user_credentials()
+    print("User Credentials:", users)
 
-    users_to_add = [
-        ("anvar", "sariqdev", 123456789),
-        ("olim", "olim223", 12341123),
-        ("1", "1", 131231),
-        ("1", "1", 23324234),
-        ("John", "JohnDoe", 4388229)
-    ]
+    # Test updating data in user_credentials
+    print("Updating user credentials...")
+    await db.update_user_credential(telegram_id=123456789, full_name="John Updated")
+    updated_user = await db.select_user_credential(telegram_id=123456789)
+    print("Updated User Credential:", updated_user)
 
-    for full_name, username, telegram_id in users_to_add:
-        try:
-            user = await db.add_user(full_name, username, telegram_id)
-            if user:
-                print(f"User added: {user}")
-            else:
-                print(f"User with telegram_id {telegram_id} already exists.")
-        except UniqueViolationError:
-            print(f"User with telegram_id {telegram_id} already exists.")
-        except Exception as e:
-            print(f"Error adding user with telegram_id {telegram_id}: {e}")
+    # Close the database pool
+    await db.pool.close()
+    print("Database connection closed.")
 
-    print("Users added successfully.")
-
-    print("Fetching all users...")
-    users = await db.select_all_users()
-    print(f"All users: {users}")
-
-    print("Fetching a specific user with ID 5...")
-    user = await db.select_user(id=5)
-    if user:
-        print(f"User found: {user}")
-    else:
-        print("User with ID 5 not found.")
-
-
-# Workaround for asyncio.run() issues on Windows
-if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(test())
+# Run the test
+asyncio.run(test_database())
