@@ -6,6 +6,14 @@ name = "pypi"
 [packages]
 aiogram = "~=2.14"
 environs = "~=8.0.0"
+<<<<<<< HEAD
+=======
+google-api-python-client = "*"
+gspread = "*"
+oauth2client = "*"
+cachetools = "*"
+pyotp = "*"
+>>>>>>> master
 asyncpg = "*"
 
 [dev-packages]
