@@ -6,28 +6,31 @@ from filters import IsPrivate
 from aiogram.dispatcher.filters.builtin import CommandStart, Text
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
-from states.dispatcher_reg_data import DispatchState, SafetyState, DriverState, AccountingState, DeniedState, UnverifiedState
-# from sheet.google_sheets_integration import get_user_role_by_telegram_id, get_full_name_by_user_id, search_truck_details, append_load_assignment_data
-from utils.db_api.database_operations import get_user_role_by_telegram_id, get_full_name_by_user_id, search_truck_details, append_load_assignment_data
+from states.dispatcher_reg_data import DispatchState, SafetyState, DriverState, AccountingState, DeniedState, \
+    UnverifiedState
+from sheet.google_sheets_integration import get_user_role_by_telegram_id, get_full_name_by_user_id, \
+    search_truck_details, append_load_assignment_data
 from keyboards.inline.new_user_inline_keyboard import new_user_letsgo
 from data.dispatcher_texts import get_random_greeting, truck_status_under_development_messages
 from data.texts import get_random_message, welcome_messages
-from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options
+from keyboards.inline.dispatcher_inline_keyboards import dispatcher_main_features, dispatcher_start_over, \
+    team_or_solo_driver, pickup_datetime_options, delivery_datetime_options, confirmation_options
 from states.assign_load_states import AssignLoad
-from utils.misc.load_assignment_validations import validate_load_number, validate_broker_name, validate_location, validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
+from utils.misc.load_assignment_validations import validate_load_number, validate_broker_name, validate_location, \
+    validate_datetime_us, validate_datetime_range_us, validate_loaded_miles
 
 
 @dp.message_handler(IsPrivate(), commands=['start', 'help'])
 async def verify_user_role(message: types.Message):
-    """Verify user's role from the database and assign the appropriate state."""
+    """Verify user's role from cached data and assign the appropriate state."""
     telegram_id = message.from_user.id
 
-    # Retrieve the role from the database
-    user_role = await get_user_role_by_telegram_id(telegram_id)
+    # Retrieve the role from the cache
+    user_role = get_user_role_by_telegram_id(telegram_id)
 
     if user_role == "Dispatcher":
         await DispatchState.dispatch_main.set()
-        full_name = await get_full_name_by_user_id(telegram_id)
+        full_name = get_full_name_by_user_id(telegram_id)
         await message.delete()
         await message.answer(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
 
@@ -48,55 +51,64 @@ async def verify_user_role(message: types.Message):
         await message.answer("Your access has been denied. Contact support if you think this is an error.")
 
     else:
-        # If user is not found
+        # If user is not found in the cache
         await UnverifiedState.unverified.set()
         welcome_text = get_random_message(welcome_messages)
         await message.answer(welcome_text, reply_markup=new_user_letsgo)
 
 
-
 @dp.message_handler(IsPrivate(), CommandStart(), state=DispatchState.dispatch_main)
 async def dispatcher_main(message: types.Message, state: FSMContext):
-    """Main menu for dispatcher-specific features."""
+    """
+    Main menu for dispatcher-specific features.
+    """
+    # Get the user's Telegram ID
     user_id = message.from_user.id
-    full_name = await get_full_name_by_user_id(user_id)
+
+    # Retrieve the full name from Google Sheets based on user_id
+    full_name = get_full_name_by_user_id(user_id)
+
+    # Save the dispatcher name in FSM state
     await state.update_data(dispatcher_name=full_name)
 
     await message.delete()
     await message.answer(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
 
 
-
 # Assign Load Workflow
 @dp.callback_query_handler(text="🛠️ Load Assign", state=DispatchState.dispatch_main)
 async def handle_assign_load(call: types.CallbackQuery, state: FSMContext):
-    """Initiates the load assignment process."""
+    # Retrieve dispatcher name from the state to keep track throughout the flow
     data = await state.get_data()
     dispatcher_name = data.get('dispatcher_name')
 
     if not dispatcher_name:
         user_id = call.from_user.id
-        dispatcher_name = await get_full_name_by_user_id(user_id)
+        dispatcher_name = get_full_name_by_user_id(user_id)
         await state.update_data(dispatcher_name=dispatcher_name)
 
     await call.message.edit_text("🛠️ Load Assignment:\nReady to assign a new load! Let's begin.\n\n"
-                              "🚛 Step 1: Please provide the Truck Number to search for available trucks.")
-    await AssignLoad.truck_number.set()
+                                 "🚛 Step 1: Please provide the Truck Number to search for available trucks.")
 
+    await AssignLoad.truck_number.set()
 
 
 @dp.message_handler(state=AssignLoad.truck_number)
 async def search_and_select_truck_number(message: types.Message, state: FSMContext):
-    """Searches for truck details based on user input and displays results."""
     truck_number = message.text
-    matched_trucks = await search_truck_details(truck_number)
+
+    # Search for trucks
+    matched_trucks = search_truck_details(truck_number)
 
     if not matched_trucks:
-        await message.answer(f"❌ No Matches Found:\n\nWe couldn’t find any trucks matching '{truck_number}'. Please double-check and try again.")
+        await message.answer(
+            f"❌ No Matches Found:\n\nWe couldn’t find any trucks matching '{truck_number}'. Please double-check and try again.")
         return
 
+    # Save matched trucks and the original truck number to FSMContext
     await state.update_data(matched_trucks=matched_trucks, searched_truck_number=truck_number)
 
+    # Create a numbered list of results
     results_message = "🔎 Search Results:\nHere are the trucks matching your query:\n\n"
     for idx, truck in enumerate(matched_trucks, start=1):
         results_message += (
@@ -107,12 +119,15 @@ async def search_and_select_truck_number(message: types.Message, state: FSMConte
             f"👥 Group Name:  {truck['Group Name']}\n\n"
         )
 
+    # Generate inline buttons for selecting a result
     truck_buttons = InlineKeyboardMarkup(row_width=5)
     for idx in range(1, len(matched_trucks) + 1):
         truck_buttons.insert(InlineKeyboardButton(
             text=str(idx),
             callback_data=f"select_truck:{idx}"
         ))
+
+    # Add cancel button
     truck_buttons.add(InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_selection"))
 
     await message.answer(results_message, reply_markup=truck_buttons)
@@ -120,25 +135,27 @@ async def search_and_select_truck_number(message: types.Message, state: FSMConte
 
 @dp.callback_query_handler(Text(startswith="select_truck:"), state=AssignLoad.truck_number)
 async def handle_truck_selection(call: types.CallbackQuery, state: FSMContext):
-    """Handles selection of a truck from search results."""
     _, selected_index = call.data.split(":")
-    selected_index = int(selected_index) - 1
+    selected_index = int(selected_index) - 1  # Convert to zero-based index
 
+    # Retrieve matched trucks from FSMContext
     data = await state.get_data()
     matched_trucks = data.get("matched_trucks")
 
     if not matched_trucks or selected_index < 0 or selected_index >= len(matched_trucks):
-        await call.answer("🚫 Hmm, that doesn’t look like a valid choice. No worries, give it another shot!", show_alert=True)
+        await call.answer("🚫 Hmm, that doesn’t look like a valid choice. No worries, give it another shot!",
+                          show_alert=True)
         return
 
     selected_truck = matched_trucks[selected_index]
 
+    # Update FSM state with selected truck details
     await state.update_data(
         truck_number=selected_truck['Truck Number'],
         company_name=selected_truck['Company Name'],
         driver_name=selected_truck['Driver Name'],
         group_name=selected_truck['Group Name'],
-        group_id=selected_truck.get('Group ID')
+        group_id=selected_truck.get('Group ID')  # Ensure Group ID is included
     )
 
     await call.message.edit_text(
@@ -150,9 +167,8 @@ async def handle_truck_selection(call: types.CallbackQuery, state: FSMContext):
         f"🎯 Great choice! Now, let’s move forward.\n"
         f"📋 Please provide the load number."
     )
-    await AssignLoad.load_number.set()
+    await AssignLoad.load_number.set()  # Move to the next step
     await call.answer()
-
 
 
 @dp.callback_query_handler(Text(equals="cancel_selection"), state=AssignLoad.truck_number)
@@ -179,6 +195,7 @@ async def enter_load_number(message: types.Message, state: FSMContext):
                          f"✅ Use only letters and spaces to ensure accuracy.")
     await AssignLoad.broker_name.set()
 
+
 # Handler for Broker Name input with validation
 @dp.message_handler(state=AssignLoad.broker_name)
 async def enter_broker_name(message: types.Message, state: FSMContext):
@@ -196,31 +213,34 @@ async def enter_broker_name(message: types.Message, state: FSMContext):
                          f"-- 👤 Solo", reply_markup=team_or_solo_driver)
     await AssignLoad.team_or_solo.set()
 
+
 # Callback handler for Team selection
 @dp.callback_query_handler(text="team", state=AssignLoad.team_or_solo)
 async def team_selected(call: CallbackQuery, state: FSMContext):
     await state.update_data(team_or_solo="Team")
     await call.message.edit_text(f"🗺️ Provide the Pickup Location\n\n"
-                              f"Enter the full address for the pickup, including:\n"
-                              f"-- Street Address\n"
-                              f"-- City, State\n"
-                              f"-- ZIP Code\n\n"
-                              f"Example: \"123 Main St, City, State, 12345\"")
+                                 f"Enter the full address for the pickup, including:\n"
+                                 f"-- Street Address\n"
+                                 f"-- City, State\n"
+                                 f"-- ZIP Code\n\n"
+                                 f"Example: \"123 Main St, City, State, 12345\"")
     await AssignLoad.pickup_location.set()
     await call.answer()  # Acknowledge the callback to remove loading state on the button
+
 
 # Callback handler for Solo selection
 @dp.callback_query_handler(text="solo", state=AssignLoad.team_or_solo)
 async def solo_selected(call: CallbackQuery, state: FSMContext):
     await state.update_data(team_or_solo="Solo")
     await call.message.edit_text(f"📍 Pickup Location Required\n\n"
-                              f"Please enter the Pickup Location, including:\n"
-                              f"-- Street Address\n"
-                              f"-- City, State\n"
-                              f"-- ZIP Code\n\n"
-                              f"Example: \"123 Main St, City, State, 12345\"")
+                                 f"Please enter the Pickup Location, including:\n"
+                                 f"-- Street Address\n"
+                                 f"-- City, State\n"
+                                 f"-- ZIP Code\n\n"
+                                 f"Example: \"123 Main St, City, State, 12345\"")
     await AssignLoad.pickup_location.set()
     await call.answer()  # Acknowledge the callback to remove loading state on the button
+
 
 # Handler for Pickup Location input with validation
 @dp.message_handler(state=AssignLoad.pickup_location)
@@ -228,18 +248,20 @@ async def enter_pickup_location(message: types.Message, state: FSMContext):
     pickup_location = message.text
     if not validate_location(pickup_location):
         await message.answer(f"⚠️ Invalid Location\n\n"
-                              f"Ensure the location includes:\n"
-                              f"-- Street Address\n"
-                              f"-- City, State\n"
-                              f"-- ZIP Code\n\n"
-                              f"Example: \"123 Main St, City, State, 12345\"")
+                             f"Ensure the location includes:\n"
+                             f"-- Street Address\n"
+                             f"-- City, State\n"
+                             f"-- ZIP Code\n\n"
+                             f"Example: \"123 Main St, City, State, 12345\"")
         return
     await state.update_data(pickup_location=pickup_location)
     await message.answer(f"🗓️ Select the Pickup Date & Time Type:\n\n"
                          f"-- Appointment Date & Time: Specify exact date and time.\n"
                          f"-- Date & Time (Range Possible): Provide a time range.\n"
-                         f"-- First Come First Serve: No specific appointment required", reply_markup=pickup_datetime_options)
+                         f"-- First Come First Serve: No specific appointment required",
+                         reply_markup=pickup_datetime_options)
     await AssignLoad.pickup_datetime.set()
+
 
 # Callback handler for Appointment Date & Time
 @dp.callback_query_handler(text="appointment_datetime", state=AssignLoad.pickup_datetime)
@@ -251,6 +273,7 @@ async def select_appointment_datetime(call: CallbackQuery, state: FSMContext):
     await AssignLoad.pickup_datetime.set()
     await call.answer()
 
+
 # Callback handler for Date & Time (Range Possible)
 @dp.callback_query_handler(text="datetime_range", state=AssignLoad.pickup_datetime)
 async def select_datetime_range(call: CallbackQuery, state: FSMContext):
@@ -261,6 +284,7 @@ async def select_datetime_range(call: CallbackQuery, state: FSMContext):
     await AssignLoad.pickup_datetime.set()
     await call.answer()
 
+
 # Callback handler for First Come First Serve (FCFS)
 @dp.callback_query_handler(text="fcfs", state=AssignLoad.pickup_datetime)
 async def select_fcfs(call: CallbackQuery, state: FSMContext):
@@ -270,6 +294,7 @@ async def select_fcfs(call: CallbackQuery, state: FSMContext):
                                  f"Please ensure the format is correct to avoid delays.")
     await AssignLoad.delivery_location.set()
     await call.answer()
+
 
 # Unified handler for Pickup Date & Time input based on dispatcher selection
 @dp.message_handler(state=AssignLoad.pickup_datetime)
@@ -312,6 +337,7 @@ async def enter_pickup_datetime(message: types.Message, state: FSMContext):
                          f"Accurate details help ensure timely delivery.")
     await AssignLoad.delivery_location.set()
 
+
 @dp.message_handler(state=AssignLoad.delivery_location)
 async def enter_delivery_location(message: types.Message, state: FSMContext):
     delivery_location = message.text
@@ -331,8 +357,10 @@ async def enter_delivery_location(message: types.Message, state: FSMContext):
     await message.answer(f"🗓️ Select the Delivery Data & Time:\n\n"
                          f"-- Appointment Date & Time: Specify exact date and time.\n"
                          f"-- Date & Time (Range Possible): Provide a time range.\n"
-                         f"-- First Come First Serve: No specific appointment required", reply_markup=delivery_datetime_options)
+                         f"-- First Come First Serve: No specific appointment required",
+                         reply_markup=delivery_datetime_options)
     await AssignLoad.delivery_datetime.set()
+
 
 @dp.callback_query_handler(text="delivery_appointment_datetime", state=AssignLoad.delivery_datetime)
 async def select_delivery_appointment_datetime(call: CallbackQuery, state: FSMContext):
@@ -344,6 +372,7 @@ async def select_delivery_appointment_datetime(call: CallbackQuery, state: FSMCo
     await AssignLoad.delivery_datetime.set()
     await call.answer()
 
+
 @dp.callback_query_handler(text="delivery_datetime_range", state=AssignLoad.delivery_datetime)
 async def select_delivery_datetime_range(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(f"📅 Input Required: Delivery Date & Time Range\n\n"
@@ -354,6 +383,7 @@ async def select_delivery_datetime_range(call: CallbackQuery, state: FSMContext)
     await AssignLoad.delivery_datetime.set()
     await call.answer()
 
+
 @dp.callback_query_handler(text="delivery_fcfs", state=AssignLoad.delivery_datetime)
 async def select_delivery_fcfs(call: CallbackQuery, state: FSMContext):
     await state.update_data(datetime_type="fcfs", delivery_datetime="First Come First Serve")
@@ -362,6 +392,7 @@ async def select_delivery_fcfs(call: CallbackQuery, state: FSMContext):
                                  f"Example: 150.5")
     await AssignLoad.loaded_miles.set()
     await call.answer()
+
 
 @dp.message_handler(state=AssignLoad.delivery_datetime)
 async def enter_delivery_datetime(message: types.Message, state: FSMContext):
@@ -400,6 +431,7 @@ async def enter_delivery_datetime(message: types.Message, state: FSMContext):
                          f"📝 Example: 123.45")
     await AssignLoad.loaded_miles.set()
 
+
 @dp.message_handler(state=AssignLoad.loaded_miles)
 async def enter_loaded_miles(message: types.Message, state: FSMContext):
     loaded_miles = message.text
@@ -419,7 +451,6 @@ async def enter_loaded_miles(message: types.Message, state: FSMContext):
     await AssignLoad.deadhead_miles.set()
 
 
-
 @dp.message_handler(state=AssignLoad.deadhead_miles)
 async def enter_deadhead_miles(message: types.Message, state: FSMContext):
     deadhead_miles = message.text
@@ -436,6 +467,7 @@ async def enter_deadhead_miles(message: types.Message, state: FSMContext):
     await message.answer(f"💵 Enter Trip Rate\n\n"
                          f"Please provide the Trip Rate in numerical format.")
     await AssignLoad.load_rate.set()
+
 
 @dp.message_handler(state=AssignLoad.load_rate)
 async def enter_load_rate(message: types.Message, state: FSMContext):
@@ -473,53 +505,101 @@ async def enter_load_rate(message: types.Message, state: FSMContext):
         f"📝 Dispatcher Name: {data['dispatcher_name']}\n"
     )
 
-    await message.answer(summary + "\n\nPlease carefully review all the entered load details to ensure accuracy. Once confirmed, you can choose to submit the information or make edits if needed.\n"
-                                   "🔍 Double-check everything to avoid errors before proceeding.", reply_markup=confirmation_options)
+    await message.answer(
+        summary + "\n\nPlease carefully review all the entered load details to ensure accuracy. Once confirmed, you can choose to submit the information or make edits if needed.\n"
+                  "🔍 Double-check everything to avoid errors before proceeding.", reply_markup=confirmation_options)
     await AssignLoad.confirmation.set()
 
 
 @dp.callback_query_handler(text="confirm_send_data", state=AssignLoad.confirmation)
 async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
-    """Sends load assignment data to the driver's group and saves it in the database."""
     try:
+        # Retrieve load assignment data from FSMContext
         data = await state.get_data()
 
-        formatted_rate = "${:,.2f}".format(data.get('load_rate', 0))
+        formatted_rate = "${:,.2f}".format(data.get('load_rate', 0))  # Format rate with commas and two decimals
         load_assignment_message = (
-            f"🚛 Assigned Load Information:\n\n"
+            f"🚛 Assigned Load Information – Confirm all entries.\n\n"
             f"🔹 Load Number: {data.get('load_number')}\n"
             f"🔹 Broker: {data.get('broker_name')}\n"
             f"🔹 Type: {data.get('team_or_solo')}\n\n"
+
             f"📅 Pickup Details:\n"
             f"🕒 Date/Time - {data.get('pickup_datetime')}\n"
             f"📍 Location - <code>{data.get('pickup_location')}</code>.\n\n"
+
             f"📦 Delivery Details:\n"
             f"🕒 Date/Time - {data.get('delivery_datetime')}\n"
             f"📍 Location - <code>{data.get('delivery_location')}</code>.\n\n"
+
             f"📏 Total Miles: {data.get('loaded_miles')}\n"
             f"💵 Rate: {formatted_rate}\n\n"
+
+            f"📜 Company's Policy – Payment is contingent on the submission of the BOL.\n"
+            f"🏦 Payment Policy: No BOL, No Money.\n\n"
+
+            f"❗ Avoid penalties by following guidelines: Key infractions detailed below.\n\n"
+
+            f"- Late for pickup/delivery on street loads (without reason): $300\n"
+            f"- Driver communication issues: $400\n"
+            f"- No Amazon Relay app/TMS: $400\n"
+            f"- Late for pickup/delivery on Amazon loads (without reason): $500\n"
+            f"- No update provided: $400\n"
+            f"- Rejecting confirmed load: $1000\n\n"
+
+            f"🚨 Operational Notes: Critical steps to avoid delays.\n\n"
+            f"- Always inform DISPATCHERS of traffic, construction, or weather delays.\n"
+            f"- Scale the load after pickup to avoid axle overweight issues.\n"
+            f"- Never leave the loaded trailer unattended.\n"
+            f"- Verify BOL correctness and upload using CamScan.\n"
+            f"- Send trailer photos to the group chat immediately.\n"
         )
 
+        # Send message to the driver's group
         group_id = int(data['group_id'])
         await call.bot.send_message(chat_id=group_id, text=load_assignment_message)
 
-        load_data = [
-            data["load_number"], data["company_name"], data["dispatcher_name"], data["driver_name"],
-            data["truck_number"], data["broker_name"], data["team_or_solo"], data["pickup_location"],
-            data["pickup_datetime"], data["delivery_location"], data["delivery_datetime"],
-            data["deadhead_miles"], data["loaded_miles"], data["load_rate"]
+        # Upload data to Google Sheets
+        sheet_data = [
+            data["load_number"],
+            data["company_name"],
+            data["dispatcher_name"],
+            data["driver_name"],
+            data["truck_number"],
+            data["broker_name"],
+            data["team_or_solo"],
+            data["pickup_location"],
+            data["pickup_datetime"],
+            data["delivery_location"],
+            data["delivery_datetime"],
+            data["deadhead_miles"],
+            data["loaded_miles"],
+            data["load_rate"],
         ]
-        await append_load_assignment_data(load_data)
+        # Append data to Google Sheets
+        try:
+            append_load_assignment_data(sheet_data)
+            await call.message.answer(
+                "✅ Load assignment data has been sent to the driver's group and saved to Google Sheets!")
+        except Exception as e:
+            await call.message.answer(f"⚠️ An error occurred while saving to Google Sheets: {e}")
 
-        await call.message.answer("✅ Load assignment data has been sent to the driver's group and saved to the database!")
-        await state.finish()
+        # Finish the FSM state
+        if state:
+            await state.finish()
+
+    except KeyError as e:
+        logging.error(f"KeyError: {e}. Missing data in FSM context.")
 
     except Exception as e:
-        logging.exception(f"Error during load assignment: {e}")
-        await call.message.answer("🚨 An error occurred. Please try again later.")
-    finally:
-        await call.answer()
+        logging.exception(f"Unexpected error: {e}")
+        await call.message.answer(
+            f"🚨 Issue Detected: We couldn't complete the load assignment. Please get in touch with support.\n"
+            "admin: @iamurod")
 
+    finally:
+        # Acknowledge callback
+        await call.answer()
 
 
 # ====== END: Assign Load Feature (Dispatcher) ======
@@ -529,7 +609,6 @@ async def handle_send_data(call: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query_handler(text="🔍 Truck Status Check", state=DispatchState.dispatch_main)
 async def handle_truck_status(call: types.CallbackQuery):
-
     # Respond with an "under development" message
     message = get_random_message(truck_status_under_development_messages)
     await call.message.edit_text(message, reply_markup=dispatcher_start_over)
@@ -543,6 +622,7 @@ async def handle_start_over(call: types.CallbackQuery):
     # Retrieve the full name from Google Sheets based on user_id
     full_name = get_full_name_by_user_id(user_id)
     await call.message.edit_text(get_random_greeting(full_name), reply_markup=dispatcher_main_features)
+
 
 @dp.callback_query_handler(text="🔚 End and Close", state=DispatchState.dispatch_main)
 async def handle_close(call: types.CallbackQuery):
