@@ -6,9 +6,9 @@ from difflib import get_close_matches
 from cachetools import TTLCache, cached
 
 
-json_file_path = "C:\\Users\\user\\PycharmProjects\\moveme-bot\\autobot.json"
-home_json_file_path = "E:\\GitHub Projects\\moveme-bot\\autobot.json"
-laptop_json_file_path = "C:\\Users\\Milto\\PycharmProjects\\moveme-bot\\autobot.json"
+json_file_path = "/home/ubuntu/moveme-bot/autobot.json"
+# home_json_file_path = "E:\\GitHub Projects\\moveme-bot\\autobot.json"
+# laptop_json_file_path = "C:\\Users\\Milto\\PycharmProjects\\moveme-bot\\autobot.json"
 
 # Define the Google Sheets file name
 GOOGLE_SHEET_NAME = "Password Credentials"
