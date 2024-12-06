@@ -1,9 +1,18 @@
+import asyncio
+import os
+
+import boto3
 from aiogram import types
 from loader import dp  # Adjust the import if your Dispatcher instance is elsewhere
 from aiogram.dispatcher.filters import Text
 from sheet.google_sheets_integration import get_full_name_by_user_id, search_truck_details
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
+from aiogram.utils.exceptions import MessageNotModified
+
+
+# Initialize Amazon Textract Client
+textract_client = boto3.client("textract", region_name="eu-west-1")  # Update your region as needed
 
 
 @dp.message_handler(commands=['assignload'], state="*")
@@ -138,22 +147,48 @@ async def cancel_truck_selection(call: types.CallbackQuery, state: FSMContext):
 
 
 @dp.message_handler(content_types=types.ContentType.PHOTO, state="*")
-async def handle_photo_upload(message: types.Message, state: FSMContext):
+async def handle_photo_with_textract(message: types.Message, state: FSMContext):
     """
-    Handler to process photo uploads. Ensures only .png photos are accepted.
+    Handler to process a photo with Amazon Textract and return extracted text without saving to disk.
     """
-    # Save the photo file ID for further processing
-    file_id = message.photo[-1].file_id  # The highest resolution photo
-    file_info = await message.bot.get_file(file_id)
-    file_path = file_info.file_path
+    # Step 1: Inform the user and simulate a loading animation
+    loading_message = await message.reply("🔄 Processing your photo, please wait...")
 
-    # Check if the file is a PNG image
-    if file_path.endswith(".png"):
-        await message.reply("✅ Photo received! Processing your .png file...")
-        # Add your logic here for handling the photo
-        # For example, save it or pass it to Amazon Textract
-    else:
-        await message.reply("❌ Only .png photos are accepted. Please send a valid .png photo.")
+    try:
+        # Update loading message with a simulated animation
+        for i in range(3):  # Simulate a few "loading" updates
+            await loading_message.edit_text(f"🔄 Processing your photo{'.' * (i + 1)}")
+            await asyncio.sleep(1)
+
+        # Step 2: Retrieve photo file
+        file_id = message.photo[-1].file_id  # Get the highest resolution photo
+        file_info = await message.bot.get_file(file_id)
+        downloaded_file = await message.bot.download_file(file_info.file_path)
+
+        # Step 3: Process the photo with Amazon Textract in memory
+        response = textract_client.detect_document_text(Document={"Bytes": downloaded_file})
+
+        # Step 4: Extract text from Textract response
+        extracted_text = []
+        for item in response["Blocks"]:
+            if item["BlockType"] == "LINE":  # Extract lines of text
+                extracted_text.append(item["Text"])
+
+        # Combine all extracted text
+        extracted_text_str = "\n".join(extracted_text)
+
+        # Step 5: Send the extracted text back to the user
+        if extracted_text:
+            await loading_message.edit_text(
+                f"✅ Text extraction successful! Here's the text from your photo:\n\n{extracted_text_str}"
+            )
+        else:
+            await loading_message.edit_text("❌ No text could be extracted from the photo.")
+
+    except Exception as e:
+        await loading_message.edit_text(
+            f"❌ An error occurred while processing the photo: {str(e)}"
+        )
 
 
 @dp.message_handler(content_types=types.ContentType.ANY, state="*")
