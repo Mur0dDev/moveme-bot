@@ -1,5 +1,7 @@
 import asyncio
 import os
+import re
+import json
 
 import boto3
 import logging
@@ -159,52 +161,118 @@ async def cancel_truck_selection(call: types.CallbackQuery, state: FSMContext):
 @dp.message_handler(content_types=types.ContentType.PHOTO, state="*")
 async def handle_photo_with_textract(message: types.Message, state: FSMContext):
     """
-    Handler to process a photo with Amazon Textract and return extracted text.
+    Process the photo with Amazon Textract and display structured JSON in PyCharm terminal.
+    Notify the user about the result being displayed in the terminal.
     """
-    # Step 1: Inform the user and simulate a loading animation
-    loading_message = await message.reply("🔄 Processing your photo, please wait...")
+    loading_message = await message.reply("🔄 Starting photo processing...")
 
     try:
-        for percent in range(0, 101, 10):
+        # Simulate percentage progress
+        for percent in range(0, 101, 20):
             await loading_message.edit_text(f"🔄 Processing your photo... {percent}% complete")
             await asyncio.sleep(0.5)
 
-        # Step 2: Retrieve the photo file
-        file_id = message.photo[-1].file_id  # Get the highest resolution photo
+        # Retrieve and process the photo
+        file_id = message.photo[-1].file_id
         file_info = await message.bot.get_file(file_id)
         downloaded_file = await message.bot.download_file(file_info.file_path)
 
-        # Convert the BytesIO object to bytes
+        # Convert BytesIO to bytes
         file_bytes = downloaded_file.read()
 
-        # Step 3: Process the photo with Amazon Textract
+        # Call Textract API
         response = textract_client.detect_document_text(Document={"Bytes": file_bytes})
 
-        # Step 4: Extract text from Textract response
-        extracted_text = []
-        for item in response["Blocks"]:
-            if item["BlockType"] == "LINE":  # Extract lines of text
-                extracted_text.append(item["Text"])
+        # Extract text lines
+        extracted_lines = [item["Text"] for item in response["Blocks"] if item["BlockType"] == "LINE"]
 
-        # Combine all extracted text into a single string
-        extracted_text_str = "\n".join(extracted_text)
+        # Process text to structure the JSON
+        structured_data = process_extracted_text(extracted_lines)
 
-        # Step 5: Send the extracted text back to the user
-        if extracted_text:
-            await loading_message.edit_text(
-                f"✅ Text extraction successful! Here's the text from your photo:\n\n{extracted_text_str}"
-            )
-        else:
-            await loading_message.edit_text("❌ No text could be extracted from the photo.")
+        # Display structured JSON in the terminal
+        print("✅ Structured Load Data (JSON):")
+        print(json.dumps(structured_data, indent=4))
+
+        # Notify the user
+        await message.answer("✅ Photo processed successfully!\n\nThe result has been displayed in the developer's console/terminal.")
 
     except Exception as e:
-        # Log the error in the terminal
         logging.error("An error occurred while processing the photo", exc_info=True)
+        await message.reply("❌ An error occurred while processing your photo. Please try again later.")
 
-        # Send a generic error message to the user
-        await loading_message.edit_text(
-            "❌ An unexpected error occurred while processing your photo. Please try again later."
-        )
+# Function to process extracted text into structured JSON
+def process_extracted_text(extracted_lines):
+    """
+    Parse the extracted text lines and structure them into JSON format.
+    """
+    # Initialize the structured data
+    structured_data = {
+        "LoadID": None,
+        "Distance": None,
+        "RatePerMile": None,
+        "TotalRate": None,
+        "Pickup": {
+            "Location": None,
+            "Address": None,
+            "Scheduled": None,
+            "Actual": None,
+            "TrailerID": None,
+            "Status": None,
+        },
+        "Delivery": {
+            "Location": None,
+            "Address": None,
+            "Scheduled": None,
+            "Actual": None,
+            "TrailerID": None,
+        },
+        "Driver": None,
+        "Equipment": {
+            "TractorID": None,
+            "TrailerType": None,
+        },
+    }
+
+    # Extract key fields
+    try:
+        # Load ID
+        structured_data["LoadID"] = next((line for line in extracted_lines if re.match(r"^\d+[A-Z0-9]+$", line)), None)
+
+        # Distance
+        structured_data["Distance"] = next((line for line in extracted_lines if "mi" in line), None)
+
+        # Rate Per Mile and Total Rate
+        structured_data["RatePerMile"] = next((line for line in extracted_lines if "/mi" in line), None)
+        structured_data["TotalRate"] = next((line for line in extracted_lines if line.startswith("$") and "/mi" not in line), None)
+
+        # Driver
+        structured_data["Driver"] = next((line for line in extracted_lines if re.match(r"^[A-Z]\.\s[A-Z][a-z]+$", line)), None)
+
+        # Pickup Details
+        pickup_start = extracted_lines.index("Pick-up instructions") - 5  # Offset to find pickup details
+        structured_data["Pickup"]["Location"] = extracted_lines[pickup_start]
+        structured_data["Pickup"]["Address"] = extracted_lines[pickup_start + 1]
+        structured_data["Pickup"]["Scheduled"] = next((line for line in extracted_lines if "Sch" in line and "Pick-up" in line), None)
+        structured_data["Pickup"]["Actual"] = next((line for line in extracted_lines if "CPT" in line and "Pick-up" in line), None)
+        structured_data["Pickup"]["TrailerID"] = next((line for line in extracted_lines if "Trailer ID" in line), None)
+        structured_data["Pickup"]["Status"] = next((line for line in extracted_lines if "Preloaded" in line), None)
+
+        # Delivery Details
+        delivery_start = extracted_lines.index("Drop-off instructions") - 5  # Offset to find delivery details
+        structured_data["Delivery"]["Location"] = extracted_lines[delivery_start]
+        structured_data["Delivery"]["Address"] = extracted_lines[delivery_start + 1]
+        structured_data["Delivery"]["Scheduled"] = next((line for line in extracted_lines if "Sch" in line and "Drop-off" in line), None)
+        structured_data["Delivery"]["Actual"] = next((line for line in extracted_lines if "CPT" in line and "Drop-off" in line), None)
+        structured_data["Delivery"]["TrailerID"] = next((line for line in extracted_lines if "Trailer ID" in line and delivery_start in extracted_lines), None)
+
+        # Equipment Details
+        structured_data["Equipment"]["TractorID"] = next((line for line in extracted_lines if "Tractor ID" in line), None)
+        structured_data["Equipment"]["TrailerType"] = next((line for line in extracted_lines if "53" in line and "Trailer" in line), None)
+
+    except Exception as e:
+        logging.error("Error while parsing extracted text", exc_info=True)
+
+    return structured_data
 
 
 
