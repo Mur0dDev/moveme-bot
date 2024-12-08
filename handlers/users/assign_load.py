@@ -2,17 +2,27 @@ import asyncio
 import os
 
 import boto3
+import logging
 from aiogram import types
-from loader import dp  # Adjust the import if your Dispatcher instance is elsewhere
+from loader import dp
+from data.config import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
 from aiogram.dispatcher.filters import Text
 from sheet.google_sheets_integration import get_full_name_by_user_id, search_truck_details
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
 from aiogram.utils.exceptions import MessageNotModified
 
+# Initialize logging for error tracking
+logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Initialize Amazon Textract Client
-textract_client = boto3.client("textract", region_name="eu-west-1")  # Update your region as needed
+textract_client = boto3.client(
+    "textract",
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
+
 
 
 @dp.message_handler(commands=['assignload'], state="*")
@@ -149,24 +159,26 @@ async def cancel_truck_selection(call: types.CallbackQuery, state: FSMContext):
 @dp.message_handler(content_types=types.ContentType.PHOTO, state="*")
 async def handle_photo_with_textract(message: types.Message, state: FSMContext):
     """
-    Handler to process a photo with Amazon Textract and return extracted text without saving to disk.
+    Handler to process a photo with Amazon Textract and return extracted text.
     """
     # Step 1: Inform the user and simulate a loading animation
     loading_message = await message.reply("🔄 Processing your photo, please wait...")
 
     try:
-        # Update loading message with a simulated animation
-        for i in range(3):  # Simulate a few "loading" updates
-            await loading_message.edit_text(f"🔄 Processing your photo{'.' * (i + 1)}")
-            await asyncio.sleep(1)
+        for percent in range(0, 101, 10):
+            await loading_message.edit_text(f"🔄 Processing your photo... {percent}% complete")
+            await asyncio.sleep(0.5)
 
-        # Step 2: Retrieve photo file
+        # Step 2: Retrieve the photo file
         file_id = message.photo[-1].file_id  # Get the highest resolution photo
         file_info = await message.bot.get_file(file_id)
         downloaded_file = await message.bot.download_file(file_info.file_path)
 
-        # Step 3: Process the photo with Amazon Textract in memory
-        response = textract_client.detect_document_text(Document={"Bytes": downloaded_file})
+        # Convert the BytesIO object to bytes
+        file_bytes = downloaded_file.read()
+
+        # Step 3: Process the photo with Amazon Textract
+        response = textract_client.detect_document_text(Document={"Bytes": file_bytes})
 
         # Step 4: Extract text from Textract response
         extracted_text = []
@@ -174,7 +186,7 @@ async def handle_photo_with_textract(message: types.Message, state: FSMContext):
             if item["BlockType"] == "LINE":  # Extract lines of text
                 extracted_text.append(item["Text"])
 
-        # Combine all extracted text
+        # Combine all extracted text into a single string
         extracted_text_str = "\n".join(extracted_text)
 
         # Step 5: Send the extracted text back to the user
@@ -186,9 +198,14 @@ async def handle_photo_with_textract(message: types.Message, state: FSMContext):
             await loading_message.edit_text("❌ No text could be extracted from the photo.")
 
     except Exception as e:
+        # Log the error in the terminal
+        logging.error("An error occurred while processing the photo", exc_info=True)
+
+        # Send a generic error message to the user
         await loading_message.edit_text(
-            f"❌ An error occurred while processing the photo: {str(e)}"
+            "❌ An unexpected error occurred while processing your photo. Please try again later."
         )
+
 
 
 @dp.message_handler(content_types=types.ContentType.ANY, state="*")
