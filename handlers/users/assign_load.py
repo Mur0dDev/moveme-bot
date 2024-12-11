@@ -158,193 +158,193 @@ async def cancel_truck_selection(call: types.CallbackQuery, state: FSMContext):
 
 
 
-@dp.message_handler(content_types=types.ContentType.PHOTO, state="*")
-async def handle_photo_with_textract(message: types.Message, state: FSMContext):
-    """
-    Process the photo with Amazon Textract and display structured JSON in PyCharm terminal.
-    Notify the user about the result being displayed in the terminal.
-    """
-    loading_message = await message.reply("🔄 Starting photo processing...")
-
-    try:
-        # Simulate percentage progress
-        for percent in range(0, 101, 20):
-            await loading_message.edit_text(f"🔄 Processing your photo... {percent}% complete")
-            await asyncio.sleep(0.5)
-
-        # Retrieve and process the photo
-        file_id = message.photo[-1].file_id
-        file_info = await message.bot.get_file(file_id)
-        downloaded_file = await message.bot.download_file(file_info.file_path)
-
-        # Convert BytesIO to bytes
-        file_bytes = downloaded_file.read()
-
-        # Call Textract API
-        response = textract_client.detect_document_text(Document={"Bytes": file_bytes})
-
-        # Extract text lines
-        extracted_lines = [item["Text"] for item in response["Blocks"] if item["BlockType"] == "LINE"]
-
-        # Process text to structure the JSON
-        structured_data = process_extracted_text(extracted_lines)
-
-        # Display structured JSON in the terminal
-        print("✅ Structured Load Data (JSON):")
-        print(json.dumps(structured_data, indent=4))
-
-        # Notify the user
-        await message.answer("✅ Photo processed successfully!\n\nThe result has been displayed in the developer's console/terminal.")
-
-    except Exception as e:
-        logging.error("An error occurred while processing the photo", exc_info=True)
-        await message.reply("❌ An error occurred while processing your photo. Please try again later.")
-
-# Function to process extracted text into structured JSON
-def process_extracted_text(extracted_lines):
-    """
-    Parse the extracted text lines and structure them into JSON format.
-    """
-    # Initialize the structured data
-    structured_data = {
-        "LoadID": None,
-        "Distance": None,
-        "RatePerMile": None,
-        "TotalRate": None,
-        "Pickup": {
-            "Location": None,
-            "Address": None,
-            "Scheduled": None,
-            "Actual": None,
-            "TrailerID": None,
-            "Status": None,
-        },
-        "Delivery": {
-            "Location": None,
-            "Address": None,
-            "Scheduled": None,
-            "Actual": None,
-            "TrailerID": None,
-        },
-        "Driver": None,
-        "Equipment": {
-            "TractorID": None,
-            "TrailerType": None,
-        },
-    }
-
-    # Extract key fields
-    try:
-        # Load ID
-        structured_data["LoadID"] = next((line for line in extracted_lines if re.match(r"^\d+[A-Z0-9]+$", line)), None)
-
-        # Distance
-        structured_data["Distance"] = next((line for line in extracted_lines if "mi" in line), None)
-
-        # Rate Per Mile and Total Rate
-        structured_data["RatePerMile"] = next((line for line in extracted_lines if "/mi" in line), None)
-        structured_data["TotalRate"] = next((line for line in extracted_lines if line.startswith("$") and "/mi" not in line), None)
-
-        # Driver
-        structured_data["Driver"] = next((line for line in extracted_lines if re.match(r"^[A-Z]\.\s[A-Z][a-z]+$", line)), None)
-
-        # Pickup Details
-        pickup_start = extracted_lines.index("Pick-up instructions") - 5  # Offset to find pickup details
-        structured_data["Pickup"]["Location"] = extracted_lines[pickup_start]
-        structured_data["Pickup"]["Address"] = extracted_lines[pickup_start + 1]
-        structured_data["Pickup"]["Scheduled"] = next((line for line in extracted_lines if "Sch" in line and "Pick-up" in line), None)
-        structured_data["Pickup"]["Actual"] = next((line for line in extracted_lines if "CPT" in line and "Pick-up" in line), None)
-        structured_data["Pickup"]["TrailerID"] = next((line for line in extracted_lines if "Trailer ID" in line), None)
-        structured_data["Pickup"]["Status"] = next((line for line in extracted_lines if "Preloaded" in line), None)
-
-        # Delivery Details
-        delivery_start = extracted_lines.index("Drop-off instructions") - 5  # Offset to find delivery details
-        structured_data["Delivery"]["Location"] = extracted_lines[delivery_start]
-        structured_data["Delivery"]["Address"] = extracted_lines[delivery_start + 1]
-        structured_data["Delivery"]["Scheduled"] = next((line for line in extracted_lines if "Sch" in line and "Drop-off" in line), None)
-        structured_data["Delivery"]["Actual"] = next((line for line in extracted_lines if "CPT" in line and "Drop-off" in line), None)
-        structured_data["Delivery"]["TrailerID"] = next((line for line in extracted_lines if "Trailer ID" in line and delivery_start in extracted_lines), None)
-
-        # Equipment Details
-        structured_data["Equipment"]["TractorID"] = next((line for line in extracted_lines if "Tractor ID" in line), None)
-        structured_data["Equipment"]["TrailerType"] = next((line for line in extracted_lines if "53" in line and "Trailer" in line), None)
-
-    except Exception as e:
-        logging.error("Error while parsing extracted text", exc_info=True)
-
-    return structured_data
-
-
-# from aiogram import types
-# from botocore.exceptions import BotoCoreError, ClientError
-#
 # @dp.message_handler(content_types=types.ContentType.PHOTO, state="*")
 # async def handle_photo_with_textract(message: types.Message, state: FSMContext):
 #     """
-#     Handles photo uploads and processes them with Amazon Textract's AnalyzeDocument API.
-#     Extracts structured data (tables and forms) and logs the result.
+#     Process the photo with Amazon Textract and display structured JSON in PyCharm terminal.
+#     Notify the user about the result being displayed in the terminal.
 #     """
-#     await message.reply("⏳ Processing your document... This may take a moment.")
+#     loading_message = await message.reply("🔄 Starting photo processing...")
 #
 #     try:
-#         # Download the photo
-#         file_id = message.photo[-1].file_id  # Get the highest resolution photo
-#         file_info = await bot.get_file(file_id)
-#         downloaded_file = await bot.download_file(file_info.file_path)
+#         # Simulate percentage progress
+#         for percent in range(0, 101, 20):
+#             await loading_message.edit_text(f"🔄 Processing your photo... {percent}% complete")
+#             await asyncio.sleep(0.5)
 #
-#         # Call Amazon Textract AnalyzeDocument API
-#         response = textract_client.analyze_document(
-#             Document={"Bytes": downloaded_file.read()},
-#             FeatureTypes=["FORMS", "TABLES"]
-#         )
+#         # Retrieve and process the photo
+#         file_id = message.photo[-1].file_id
+#         file_info = await message.bot.get_file(file_id)
+#         downloaded_file = await message.bot.download_file(file_info.file_path)
 #
-#         # Parse key-value pairs
-#         key_value_pairs = {}
-#         for block in response["Blocks"]:
-#             if block["BlockType"] == "KEY_VALUE_SET" and "EntityTypes" in block and "KEY" in block["EntityTypes"]:
-#                 key = block.get("Text", "").strip()
-#                 if "Relationships" in block:
-#                     for relation in block["Relationships"]:
-#                         if relation["Type"] == "VALUE":
-#                             value_block_id = relation["Ids"][0]
-#                             value_block = next(
-#                                 (b for b in response["Blocks"] if b["Id"] == value_block_id), None
-#                             )
-#                             if value_block and "Text" in value_block:
-#                                 key_value_pairs[key] = value_block["Text"].strip()
+#         # Convert BytesIO to bytes
+#         file_bytes = downloaded_file.read()
 #
-#         # Parse tables
-#         tables = []
-#         for block in response["Blocks"]:
-#             if block["BlockType"] == "TABLE":
-#                 table = []
-#                 for relation in block.get("Relationships", []):
-#                     if relation["Type"] == "CHILD":
-#                         for child_id in relation["Ids"]:
-#                             cell_block = next((b for b in response["Blocks"] if b["Id"] == child_id), None)
-#                             if cell_block and cell_block["BlockType"] == "CELL":
-#                                 cell_text = " ".join([w["Text"] for w in response["Blocks"] if w["Id"] in cell_block.get("Relationships", [{}])[0].get("Ids", [])])
-#                                 table.append({"Row": cell_block["RowIndex"], "Column": cell_block["ColumnIndex"], "Text": cell_text})
-#                 tables.append(table)
+#         # Call Textract API
+#         response = textract_client.detect_document_text(Document={"Bytes": file_bytes})
 #
-#         # Combine results into a structured output
-#         result = {
-#             "KeyValuePairs": key_value_pairs,
-#             "Tables": tables
-#         }
+#         # Extract text lines
+#         extracted_lines = [item["Text"] for item in response["Blocks"] if item["BlockType"] == "LINE"]
 #
-#         # Log JSON output in the terminal
-#         print("📝 Amazon Textract Output:", result)
+#         # Process text to structure the JSON
+#         structured_data = process_extracted_text(extracted_lines)
 #
-#         await message.reply("✅ Document processed successfully. The results have been displayed in the console.")
+#         # Display structured JSON in the terminal
+#         print("✅ Structured Load Data (JSON):")
+#         print(json.dumps(structured_data, indent=4))
 #
-#     except (BotoCoreError, ClientError) as e:
-#         logging.exception("An error occurred while calling Amazon Textract.")
-#         await message.reply(f"❌ An error occurred while processing the document: {str(e)}")
+#         # Notify the user
+#         await message.answer("✅ Photo processed successfully!\n\nThe result has been displayed in the developer's console/terminal.")
+#
 #     except Exception as e:
-#         logging.exception("An unexpected error occurred while processing the photo.")
-#         await message.reply("❌ An unexpected error occurred while processing your document. Please try again.")
+#         logging.error("An error occurred while processing the photo", exc_info=True)
+#         await message.reply("❌ An error occurred while processing your photo. Please try again later.")
 #
+# # Function to process extracted text into structured JSON
+# def process_extracted_text(extracted_lines):
+#     """
+#     Parse the extracted text lines and structure them into JSON format.
+#     """
+#     # Initialize the structured data
+#     structured_data = {
+#         "LoadID": None,
+#         "Distance": None,
+#         "RatePerMile": None,
+#         "TotalRate": None,
+#         "Pickup": {
+#             "Location": None,
+#             "Address": None,
+#             "Scheduled": None,
+#             "Actual": None,
+#             "TrailerID": None,
+#             "Status": None,
+#         },
+#         "Delivery": {
+#             "Location": None,
+#             "Address": None,
+#             "Scheduled": None,
+#             "Actual": None,
+#             "TrailerID": None,
+#         },
+#         "Driver": None,
+#         "Equipment": {
+#             "TractorID": None,
+#             "TrailerType": None,
+#         },
+#     }
+#
+#     # Extract key fields
+#     try:
+#         # Load ID
+#         structured_data["LoadID"] = next((line for line in extracted_lines if re.match(r"^\d+[A-Z0-9]+$", line)), None)
+#
+#         # Distance
+#         structured_data["Distance"] = next((line for line in extracted_lines if "mi" in line), None)
+#
+#         # Rate Per Mile and Total Rate
+#         structured_data["RatePerMile"] = next((line for line in extracted_lines if "/mi" in line), None)
+#         structured_data["TotalRate"] = next((line for line in extracted_lines if line.startswith("$") and "/mi" not in line), None)
+#
+#         # Driver
+#         structured_data["Driver"] = next((line for line in extracted_lines if re.match(r"^[A-Z]\.\s[A-Z][a-z]+$", line)), None)
+#
+#         # Pickup Details
+#         pickup_start = extracted_lines.index("Pick-up instructions") - 5  # Offset to find pickup details
+#         structured_data["Pickup"]["Location"] = extracted_lines[pickup_start]
+#         structured_data["Pickup"]["Address"] = extracted_lines[pickup_start + 1]
+#         structured_data["Pickup"]["Scheduled"] = next((line for line in extracted_lines if "Sch" in line and "Pick-up" in line), None)
+#         structured_data["Pickup"]["Actual"] = next((line for line in extracted_lines if "CPT" in line and "Pick-up" in line), None)
+#         structured_data["Pickup"]["TrailerID"] = next((line for line in extracted_lines if "Trailer ID" in line), None)
+#         structured_data["Pickup"]["Status"] = next((line for line in extracted_lines if "Preloaded" in line), None)
+#
+#         # Delivery Details
+#         delivery_start = extracted_lines.index("Drop-off instructions") - 5  # Offset to find delivery details
+#         structured_data["Delivery"]["Location"] = extracted_lines[delivery_start]
+#         structured_data["Delivery"]["Address"] = extracted_lines[delivery_start + 1]
+#         structured_data["Delivery"]["Scheduled"] = next((line for line in extracted_lines if "Sch" in line and "Drop-off" in line), None)
+#         structured_data["Delivery"]["Actual"] = next((line for line in extracted_lines if "CPT" in line and "Drop-off" in line), None)
+#         structured_data["Delivery"]["TrailerID"] = next((line for line in extracted_lines if "Trailer ID" in line and delivery_start in extracted_lines), None)
+#
+#         # Equipment Details
+#         structured_data["Equipment"]["TractorID"] = next((line for line in extracted_lines if "Tractor ID" in line), None)
+#         structured_data["Equipment"]["TrailerType"] = next((line for line in extracted_lines if "53" in line and "Trailer" in line), None)
+#
+#     except Exception as e:
+#         logging.error("Error while parsing extracted text", exc_info=True)
+#
+#     return structured_data
+
+
+from aiogram import types
+from botocore.exceptions import BotoCoreError, ClientError
+
+@dp.message_handler(content_types=types.ContentType.PHOTO, state="*")
+async def handle_photo_with_textract(message: types.Message, state: FSMContext):
+    """
+    Handles photo uploads and processes them with Amazon Textract's AnalyzeDocument API.
+    Extracts structured data (tables and forms) and logs the result.
+    """
+    await message.reply("⏳ Processing your document... This may take a moment.")
+
+    try:
+        # Download the photo
+        file_id = message.photo[-1].file_id  # Get the highest resolution photo
+        file_info = await bot.get_file(file_id)
+        downloaded_file = await bot.download_file(file_info.file_path)
+
+        # Call Amazon Textract AnalyzeDocument API
+        response = textract_client.analyze_document(
+            Document={"Bytes": downloaded_file.read()},
+            FeatureTypes=["FORMS", "TABLES"]
+        )
+
+        # Parse key-value pairs
+        key_value_pairs = {}
+        for block in response["Blocks"]:
+            if block["BlockType"] == "KEY_VALUE_SET" and "EntityTypes" in block and "KEY" in block["EntityTypes"]:
+                key = block.get("Text", "").strip()
+                if "Relationships" in block:
+                    for relation in block["Relationships"]:
+                        if relation["Type"] == "VALUE":
+                            value_block_id = relation["Ids"][0]
+                            value_block = next(
+                                (b for b in response["Blocks"] if b["Id"] == value_block_id), None
+                            )
+                            if value_block and "Text" in value_block:
+                                key_value_pairs[key] = value_block["Text"].strip()
+
+        # Parse tables
+        tables = []
+        for block in response["Blocks"]:
+            if block["BlockType"] == "TABLE":
+                table = []
+                for relation in block.get("Relationships", []):
+                    if relation["Type"] == "CHILD":
+                        for child_id in relation["Ids"]:
+                            cell_block = next((b for b in response["Blocks"] if b["Id"] == child_id), None)
+                            if cell_block and cell_block["BlockType"] == "CELL":
+                                cell_text = " ".join([w["Text"] for w in response["Blocks"] if w["Id"] in cell_block.get("Relationships", [{}])[0].get("Ids", [])])
+                                table.append({"Row": cell_block["RowIndex"], "Column": cell_block["ColumnIndex"], "Text": cell_text})
+                tables.append(table)
+
+        # Combine results into a structured output
+        result = {
+            "KeyValuePairs": key_value_pairs,
+            "Tables": tables
+        }
+
+        # Log JSON output in the terminal
+        print("📝 Amazon Textract Output:", result)
+
+        await message.reply("✅ Document processed successfully. The results have been displayed in the console.")
+
+    except (BotoCoreError, ClientError) as e:
+        logging.exception("An error occurred while calling Amazon Textract.")
+        await message.reply(f"❌ An error occurred while processing the document: {str(e)}")
+    except Exception as e:
+        logging.exception("An unexpected error occurred while processing the photo.")
+        await message.reply("❌ An unexpected error occurred while processing your document. Please try again.")
+
 
 
 
